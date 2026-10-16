@@ -330,20 +330,63 @@ Follows the approved mockup: `docs/design/approved-mockup.html` (open in a brows
 
 ---
 
-## 11. Testing
-- **Unit (Vitest), `core/` ≥ 90 % line coverage:**
-  - Access-level mapping from raw AWS JSON fixtures.
-  - Generic engine: resource-scoped vs `*` split; ARN placeholder substitution; deterministic Sids/ordering.
-  - Each smart module: golden tests per preset (expected statements committed as fixtures and reviewed by hand against AWS docs). S3 prefix cases: root, nested, `${aws:username}`, multiple prefixes, KMS.
-  - Trust builder for every kind, incl. GitHub ref variants.
-  - Linter: one test per rule (positive + negative).
-  - Exporters: snapshot tests for each format for 3 reference roles (S3 group, EC2 + instance profile, GitHub OIDC). Terraform snapshot additionally checked with `terraform fmt -check` and `terraform validate` in CI; CloudFormation with `cfn-lint`; bash with `shellcheck`.
-  - Every template instantiates with sample params and produces lint-error-free output.
-  - Share URL round-trip.
-- **Policy grammar check:** all generated policies validated against an IAM policy JSON schema; action names validated against the service data.
-- **Optional CI job (manual dispatch, needs AWS OIDC role):** run IAM Access Analyzer `ValidatePolicy` on all golden fixtures. Not required for merge.
-- **E2E (Playwright, Chromium):** landing → template 1 → fill params → open in workspace → JSON contains expected ARNs; sentence ⇄ grid toggle preserves model; theme toggle; share URL restore; viewport 390 px shows desktop card.
-- **CI (GitHub Actions on PR/push):** typecheck, lint (ESLint), unit, e2e, build.
+## 11. Validation & testing
+
+**Goal:** no generated policy, trust policy or export ever fails when a user applies it. Validation runs in six layers; layers 1–5 gate every merge **and** every weekly data refresh (a refresh that breaks anything is not deployed).
+
+### Layer 1 — In-browser strict validator (ships to users, runs on every change)
+`core/validate/` — same code used in CI. Blocks Export on any error.
+- **Structure:** policy and trust documents validated against a strict IAM policy JSON schema (zod): `Version` = `2012-10-17`; `Effect` ∈ Allow/Deny; Action/Resource non-empty; unique `Sid`s matching `^[A-Za-z0-9]*$`; condition operators from the known IAM operator list.
+- **Action existence:** every action exists in the service data (case-sensitive match on name).
+- **Action ↔ resource compatibility:** every resource ARN in a statement matches (pattern derived from `arnFormats`) a resource type that **every** action in that statement supports; actions with no resource types appear only with `"*"`. This is the check that catches the S3 bucket-vs-object mistake.
+- **Condition key validity:** each condition key is a global `aws:` key, or in the service's `ConditionKeys`, and is supported by at least one action in the statement.
+- **Value validation:** bucket names, account IDs (12 digits), role/policy names, ARNs, GitHub owner/repo, regions (known list), KMS key ARNs/IDs — field-level, before reaching the engine.
+- **Limits:** size limits (6,144 / 10,240 / 2,048, whitespace excluded), max 10 managed policies per role, role name ≤ 64 chars, policy name ≤ 128.
+
+### Layer 2 — Unit & golden tests (Vitest, `core/` ≥ 95 % lines and branches)
+- Access-level mapping from raw AWS JSON fixtures.
+- Generic engine: resource-scoped vs `*` split; ARN substitution; deterministic Sids/ordering.
+- Each smart module: golden fixtures per preset, hand-reviewed against AWS docs. S3 prefix cases: root, nested, multiple prefixes, `${aws:username}`, KMS.
+- Trust builder: every kind and GitHub ref variant.
+- Linter and validator: one positive + one negative test per rule.
+- Exporters: snapshots for 3 reference roles in every format.
+- Every template instantiates with sample params and passes Layer 1.
+- Share URL round-trip.
+
+### Layer 3 — Property-based / fuzz testing (fast-check)
+- Generate thousands of random valid RoleModels (random services from the real data, random levels/actions/scopes, all trust kinds) → assert generated documents always pass Layer 1, are deterministic (same input → byte-identical output) and never exceed limits without a lint error.
+- **Exhaustive sweep:** for **every service × every access level** (≈ 2,300 combinations), generate a policy with sample ARNs and assert it passes Layer 1. Runs in CI on every PR (offline, seconds).
+
+### Layer 4 — Export tooling checks (CI, offline)
+- Terraform: `terraform fmt -check` + `terraform init -backend=false` + `terraform validate` with the AWS provider.
+- CloudFormation: `cfn-lint`.
+- Bash: `shellcheck`; PowerShell: `PSScriptAnalyzer` + a parse check.
+- AWS CLI: a script parses every generated `aws` command and checks it against the AWS CLI service models (botocore JSON for `iam`, `eks`): operation exists, all required parameters present, no unknown flags, value types correct.
+
+### Layer 5 — AWS-authoritative validation (CI, needs a sandbox AWS account via GitHub OIDC, read-only/no resources created)
+- **IAM Access Analyzer `ValidatePolicy`** on every golden fixture, every template output, and a 300-policy sample from the Layer 3 sweep: identity policies as `IDENTITY_POLICY`; trust policies as `RESOURCE_POLICY` + `AWS::IAM::AssumeRolePolicyDocument`. **Any ERROR or SECURITY_WARNING fails the build**; WARNING/SUGGESTION must be listed in an allowlist with a reason.
+- **IAM Policy Simulator `SimulateCustomPolicy`** behaviour tests per template/module — asserting *what the policy actually does*, with context keys, e.g.:
+  - S3 folder read-only: `GetObject data-lake/reports/a.pdf` = allowed; `GetObject data-lake/other/a.pdf` = denied; `ListBucket` with `s3:prefix=reports/` = allowed, with `s3:prefix=other/` = denied; `PutObject` = denied.
+  - EC2 operator: `StopInstances` on instance with `aws:ResourceTag/env=dev` = allowed, `env=prod` = denied; `TerminateInstances` = denied.
+  - Each template ships with its own allow/deny assertion table (the same table drives the "can / cannot" text, so the explainer is verified too).
+- **Custom policy check `CheckAccessNotGranted`** for every template: assert dangerous actions (`iam:*` write actions, `iam:PassRole` on `*`, `sts:AssumeRole` on `*`, `organizations:*`, `kms:ScheduleKeyDeletion`, etc.) are not granted. (Paid per call — templates only, a few cents per run.)
+- Runs on every PR to `main` (from the same repo) and before every weekly data deploy.
+
+### Layer 6 — Real apply tests (nightly + before release, sandbox AWS account)
+For every template and each export format (CLI bash, CLI PowerShell, Terraform, CloudFormation):
+1. Create test resources (bucket, tagged instance stopped, ECR repo, secret, table…) via a fixture stack.
+2. **Apply the generated export exactly as a user would copy it** (unique name suffix per run).
+3. Assume the created role (or use a test user in the group) and run the allowed operations → must succeed; run the denied operations → must fail with AccessDenied.
+4. Tear everything down (always runs, plus a sweeper job that deletes anything tagged `rolecraft-test` older than 24 h).
+Cost: IAM is free; test resources are minimal (no running instances, tiny objects) — expected < $1/month.
+Templates display a **"Verified on AWS · <date>"** badge sourced from the last successful Layer 6 run (written into the build as data).
+
+### UI tests
+- **E2E (Playwright, Chromium):** landing → template → fill params → open in workspace → output matches golden; Sentence ⇄ Grid preserves model; theme toggle; share URL restore; copy buttons; export ZIP contents; 390 px viewport shows desktop card; invalid input blocks export with message.
+- **Error-free runtime:** Playwright fails on any `console.error` or unhandled rejection; React error boundary reports are counted.
+
+### CI pipeline
+`ci.yml` (PR/push): typecheck → ESLint → Layer 2 → Layer 3 → Layer 4 → build → E2E → Layer 5. `nightly.yml`: Layer 6 + sweeper. `sync-aws-data.yml`: sync → all of `ci.yml` → commit only if green.
 
 ---
 
