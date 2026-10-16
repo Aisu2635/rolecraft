@@ -14,7 +14,7 @@ export { LIMITS, policySize } from "./size";
 export { isKnownConditionOperator, GLOBAL_CONDITION_KEYS } from "./conditions";
 export { validateModelValues } from "./values";
 
-const ACTION_FORMAT = /^[a-z0-9-]+:[A-Za-z0-9*?]+$/;
+const ACTION_FORMAT = /^[a-z0-9-]+:[A-Za-z0-9*?_-]+$/;
 const MAX_LISTED = 5;
 const MAX_ACTION_LENGTH = 256;
 

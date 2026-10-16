@@ -115,6 +115,20 @@ describe("validateIdentityPolicy", () => {
     expect(ids(doc(allow("s3GetObject")))).toEqual(["V_ACTION_FORMAT"]);
     expect(ids(doc(allow("s3:getobject")))).toEqual(["V_UNKNOWN_ACTION"]);
   });
+  it("accepts real action names containing hyphens (vpc-lattice:AssociateViaAWSService-EventsAndStates)", () => {
+    const lattice = createCatalog([
+      {
+        key: "vpc-lattice",
+        name: "VPC Lattice",
+        category: "Networking",
+        actions: [{ name: "AssociateViaAWSService-EventsAndStates", level: "Permissions management", resources: [], label: "x", conditionKeys: [] }],
+        resources: [],
+        conditionKeys: [],
+      },
+    ]);
+    const d = doc(allow("vpc-lattice:AssociateViaAWSService-EventsAndStates"));
+    expect(validateIdentityPolicy(d, lattice).map((i) => i.id)).toEqual([]);
+  });
   it("reports principal and unsupported elements as V_SCHEMA", () => {
     expect(ids(doc(allow("s3:Get*", "*", { Principal: "*" })))).toEqual(["V_SCHEMA"]);
     expect(ids(doc(allow("s3:Get*", "*", { NotPrincipal: "*" })))).toEqual(["V_SCHEMA"]);
