@@ -130,13 +130,15 @@ Build / CI
      name: string;              // "Amazon S3" (from curated map, else title-cased key)
      category: Category;        // curated map, else "Other"
      actions: SlimAction[];
-     resources: { name: string; arnFormats: string[] }[];
+     resources: { name: string; arnFormats: string[]; conditionKeys: string[] }[];
+     conditionKeys: string[];   // service-level condition keys
    }
    interface SlimAction {
      name: string;              // "GetObject"
      level: "List" | "Read" | "Write" | "Tagging" | "Permissions management";
      resources: string[];       // resource-type names; [] means only "*" is supported
      label: string;             // "Get object" (humanized from name)
+     conditionKeys: string[];   // ActionConditionKeys
    }
    ```
 3. Access level mapping (first match wins): `IsPermissionManagement` → Permissions management; `IsTaggingOnly` → Tagging; `IsWrite` → Write; `IsList` → List; otherwise Read.
@@ -158,7 +160,7 @@ Build / CI
 interface RoleModel {
   version: 1;
   name: string;                       // "rolecraft-analytics" (validated: [\w+=,.@-]{1,64})
-  partition: "aws" | "aws-cn" | "aws-us-gov";   // default "aws"
+  partition: "aws";                  // v1: commercial partition only (service principals / GitHub OIDC differ in aws-cn and aws-us-gov); field kept for later
   accountId?: string;                 // optional, 12 digits; otherwise "*"/placeholder in ARNs
   region?: string;                    // optional; otherwise "*"
   trust: Trust;
@@ -183,7 +185,7 @@ interface Grant {
 
 type Scope =
   | { type: "all" }                                        // Resource "*"
-  | { type: "arns"; values: Record<string, string>[] }     // per resource type, ARN placeholder values
+  | { type: "arns"; arns: string[] }                        // concrete ARNs (built in the UI from arnFormats via fillArn)
   | { type: "module"; data: unknown };                     // module-specific (e.g. bucket + prefix, tag key/value)
 
 type AccessSelection =
@@ -428,3 +430,11 @@ rolecraft/
 6. **Exporters:** CLI bash/PowerShell, Terraform, CloudFormation, ZIP.
 7. **Templates + landing page + phone handling.**
 8. **Polish + launch:** OG image, analytics, Cloudflare Pages + domain, README with screenshots/GIF for LinkedIn.
+
+---
+
+## 15. Engine rules added during planning
+- **ARN classification:** a resource ARN is classified as the resource type(s) whose `arnFormats` pattern it matches with the **most literal (non-placeholder) characters**; ties accept all tied types. (Prevents `arn:aws:s3:::b/k` being accepted as a *bucket* ARN.) `"*"` is compatible with every action.
+- **Partial-resource warning:** when an action lists several resource types (e.g. `ec2:RunInstances`) and the grant's ARNs cover only some, the engine emits a warning naming the missing types ("may also need access to: image, subnet, security-group") — syntactically valid policies that fail at runtime are the main remaining failure mode.
+- **Actions that don't fit the given ARNs** (have resource types, none matched) are left out of the policy and reported as an `info` issue, never emitted with a wrong ARN.
+- **GitHub trust requires an account ID** (needed for the OIDC provider ARN) — validator error if missing.
