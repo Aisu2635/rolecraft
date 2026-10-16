@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RoleCraft — AWS dark mockup</title>
+<link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<style>
+  :root{
+    --nav:#0f141a; --nav2:#232f3e; --bg:#f2f3f3; --white:#fff; --line:#d1d5db; --line2:#e9ebed;
+    --text:#000716; --muted:#5f6b7a; --link:#0972d3; --orange:#ff9900; --orange-d:#ec7211;
+    --green:#037f0c; --green-bg:#f2fcf3; --red:#d91515; --blue-bg:#f2f8fd; --blue-line:#b8e7ff;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font:14px/20px "Open Sans","Helvetica Neue",Arial,sans-serif}
+  .mono,pre{font-family:"JetBrains Mono",ui-monospace,monospace}
+  button{font:inherit;cursor:pointer}
+  svg.lucide{width:16px;height:16px;stroke-width:2;vertical-align:-3px}
+  .switch{position:sticky;top:0;z-index:30;display:flex;gap:6px;justify-content:center;padding:8px;background:#fff;border-bottom:1px solid var(--line)}
+  .switch button{padding:4px 14px;border-radius:16px;border:1px solid var(--line);background:#fff;color:var(--muted);font-size:13px}
+  .switch button.on{background:var(--nav2);color:#fff;border-color:var(--nav2)}
+  .view{display:none}.view.on{display:block}
+  .frame{max-width:1280px;margin:16px auto 30px;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--bg);box-shadow:0 8px 30px -12px #0003}
+
+  /* top nav (console style) */
+  .top{display:flex;align-items:center;gap:18px;height:44px;padding:0 18px;background:var(--nav);color:#fff}
+  .brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:15px}
+  .mark{width:22px;height:22px;border-radius:4px;background:var(--orange);display:grid;place-items:center;color:var(--nav)}
+  .mark svg.lucide{width:14px;height:14px;stroke-width:2.5}
+  .top a{color:#d1d5db;font-size:13px;text-decoration:none}
+  .top a:hover{color:var(--orange)}
+  .sp{flex:1}
+  .tbtn{color:#fff;background:transparent;border:0;font-size:13px;display:flex;gap:6px;align-items:center}
+
+  /* buttons */
+  .btn{display:inline-flex;align-items:center;gap:6px;padding:4px 18px;min-height:32px;border-radius:20px;border:2px solid var(--link);color:var(--link);background:#fff;font-weight:700;font-size:14px}
+  .btn.primary{background:var(--orange);border-color:var(--orange);color:var(--text)}
+  .btn.primary:hover{background:var(--orange-d);border-color:var(--orange-d)}
+  .btn.sm{padding:2px 12px;min-height:26px;font-size:13px}
+  .link{color:var(--link);font-weight:700;text-decoration:none}
+
+  /* containers */
+  .page{padding:20px 28px 28px}
+  .crumb{font-size:13px;color:var(--muted);margin-bottom:8px}
+  .crumb a{color:var(--link);text-decoration:none}
+  h1{font-size:24px;line-height:30px;font-weight:700}
+  h2{font-size:18px;line-height:22px;font-weight:700}
+  h3{font-size:14px;font-weight:700}
+  .desc{color:var(--muted)}
+  .box{background:var(--white);border-radius:16px;box-shadow:0 1px 1px #0007161a,0 1px 8px 2px #00071612;overflow:hidden}
+  .box .bh{padding:14px 20px 10px;display:flex;align-items:center;gap:10px}
+  .box .bb{padding:4px 20px 18px}
+  .box .bh .desc{font-size:13px}
+
+  /* landing */
+  .hero{background:var(--nav2);color:#fff;padding:56px 48px 64px;display:grid;grid-template-columns:1.1fr 1fr;gap:48px;align-items:center}
+  .hero .kick{color:var(--orange);font-weight:700;font-size:13px;letter-spacing:.04em;text-transform:uppercase;margin-bottom:12px}
+  .hero h1{font-size:42px;line-height:50px;color:#fff;margin-bottom:16px}
+  .hero p{color:#d1d5db;font-size:17px;line-height:26px;margin-bottom:26px;max-width:520px}
+  .hero .ctas{display:flex;gap:12px}
+  .hero .btn:not(.primary){background:transparent;border-color:#fff;color:#fff}
+  .hero .facts{display:flex;gap:22px;margin-top:26px;color:#d1d5db;font-size:13px}
+  .hero .facts span{display:flex;gap:6px;align-items:center}
+  .hero .facts svg{color:var(--orange)}
+  .preview{background:#fff;color:var(--text);border-radius:16px;overflow:hidden;box-shadow:0 20px 50px -20px #000a}
+  .preview .ph{padding:12px 16px;border-bottom:1px solid var(--line2);font-weight:700;display:flex;gap:8px;align-items:center}
+  .preview .ph .desc{font-weight:400;font-size:13px}
+  .lines{padding:12px 16px 4px}
+  .line{display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:7px 0;border-bottom:1px solid var(--line2)}
+  .line:last-child{border-bottom:0}
+  pre{background:#0f141a;color:#d1d5db;font-size:12px;line-height:19px;padding:14px 16px;white-space:pre;overflow:hidden}
+  .k{color:#89bdff}.s{color:#9be59b}.c{color:var(--orange)}
+  .band{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;padding:28px 48px}
+  .feat{padding:20px}
+  .feat .fi{width:36px;height:36px;border-radius:8px;background:var(--blue-bg);color:var(--link);display:grid;place-items:center;margin-bottom:12px}
+  .feat .fi svg.lucide{width:20px;height:20px}
+  .feat p{color:var(--muted);margin-top:4px}
+  .mobile-note{margin:0 48px 28px;display:flex;gap:12px;align-items:center;padding:12px 16px;border:1px solid var(--blue-line);background:var(--blue-bg);border-radius:12px;font-size:13px}
+  .mobile-note svg{color:var(--link)}
+  .foot{display:flex;gap:16px;padding:14px 48px;border-top:1px solid var(--line);color:var(--muted);font-size:12px;background:#fff}
+
+  /* chips used in sentence mode */
+  .who{display:inline-flex;gap:6px;align-items:center;padding:2px 10px;border-radius:12px;background:var(--blue-bg);border:1px solid var(--blue-line);color:var(--link);font-weight:700;font-size:13px}
+  .sel{display:inline-flex;gap:6px;align-items:center;padding:2px 8px 2px 10px;border:1px solid #8c8c94;border-radius:8px;background:#fff;font-size:13px;font-weight:600}
+  .sel.v{border-color:var(--orange);background:#fff8ec}
+  .sel svg.lucide{width:14px;height:14px;color:var(--muted)}
+
+  /* templates */
+  .tgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:16px}
+  .tcard{padding:16px 18px;display:flex;flex-direction:column;gap:8px;border:2px solid transparent}
+  .tcard:hover{border-color:var(--link)}
+  .thead{display:flex;gap:10px;align-items:center}
+  .ti{width:32px;height:32px;border-radius:8px;display:grid;place-items:center;background:#f4f4f4;color:var(--nav2);flex:none}
+  .tcard p{color:var(--muted);font-size:13px}
+  .meta{font-size:12px;color:var(--muted)}
+  .tags{display:flex;gap:6px;flex-wrap:wrap}
+  .tag{font:11.5px "JetBrains Mono";padding:1px 7px;border-radius:4px;background:#f4f4f4;border:1px solid var(--line2)}
+  .tfoot{display:flex;align-items:center;margin-top:auto;padding-top:8px}
+  .ok{display:inline-flex;gap:4px;align-items:center;color:var(--green);font-size:12px;font-weight:600}
+  .ok svg.lucide{width:14px;height:14px}
+  .filters{display:flex;gap:10px;align-items:center;margin-top:16px}
+  .input{display:flex;gap:8px;align-items:center;padding:4px 12px;min-height:32px;border:1px solid #8c8c94;border-radius:8px;background:#fff;color:var(--muted);flex:0 1 420px}
+  .seg{display:inline-flex;border:1px solid #8c8c94;border-radius:8px;overflow:hidden;background:#fff}
+  .seg span{padding:5px 12px;font-size:13px;border-right:1px solid #8c8c94}
+  .seg span:last-child{border-right:0}
+  .seg .on{background:var(--nav2);color:#fff;font-weight:600}
+
+  /* workspace */
+  .ws{display:grid;grid-template-columns:240px 1fr 400px;min-height:600px;background:#fff}
+  .side{border-right:1px solid var(--line);padding:16px}
+  .side h3{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:18px 0 6px}
+  .si{display:flex;gap:8px;align-items:center;padding:6px 8px;border-radius:6px;font-size:13.5px;color:var(--text)}
+  .si svg.lucide{color:var(--muted)}
+  .si:hover{background:var(--bg)}
+  .si.on{background:var(--blue-bg);color:var(--link);font-weight:700;box-shadow:inset 3px 0 0 var(--link)}
+  .si.on svg.lucide{color:var(--link)}
+  .si .n{margin-left:auto;font-size:12px;color:var(--muted)}
+  .main{padding:18px 24px;background:var(--bg)}
+  .steps{display:flex;gap:28px;margin-bottom:16px}
+  .st{display:flex;gap:8px;align-items:center;color:var(--muted);font-size:13px}
+  .st .c{width:22px;height:22px;border-radius:50%;border:2px solid #8c8c94;display:grid;place-items:center;font-size:11px;font-weight:700}
+  .st.done{color:var(--text)}.st.done .c{background:var(--green);border-color:var(--green);color:#fff}
+  .st.cur{color:var(--link);font-weight:700}.st.cur .c{border-color:var(--link);color:var(--link)}
+  .rules .line{padding:10px 0}
+  .rules .x{margin-left:auto;color:var(--muted)}
+  .add{display:flex;gap:6px;align-items:center;color:var(--link);font-weight:700;padding-top:10px}
+  .alert{display:flex;gap:10px;padding:10px 14px;border-radius:12px;border:2px solid var(--green);background:var(--green-bg);margin-top:14px;font-size:13px}
+  .alert svg{color:var(--green);flex:none;margin-top:2px}
+  .alert b{display:block}
+  .no{color:var(--red);font-weight:600}
+  .out{border-left:1px solid var(--line);display:flex;flex-direction:column}
+  .tabs{display:flex;border-bottom:1px solid var(--line);padding:0 12px}
+  .tab{padding:10px 10px;font-size:13px;font-weight:700;color:var(--muted);border-bottom:4px solid transparent}
+  .tab.on{color:var(--link);border-color:var(--link)}
+  .out pre{flex:1;margin:0}
+  .ofoot{padding:12px 16px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:10px}
+  .status{display:flex;gap:16px;font-size:13px}
+  .status span{display:flex;gap:4px;align-items:center}
+  .status .g{color:var(--green)}.status .i{color:var(--link)}
+  .bar{height:4px;background:var(--line2);border-radius:4px;overflow:hidden}.bar i{display:block;width:23%;height:100%;background:var(--link)}
+  .meterlbl{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:4px}
+  .orow{display:flex;gap:8px;justify-content:flex-end}
+
+  .choose{display:flex;gap:10px;justify-content:center;padding:4px 16px 40px;flex-wrap:wrap}
+  .choose .option{cursor:pointer;padding:8px 16px;border-radius:20px;border:2px solid var(--link);color:var(--link);font-weight:700;background:#fff}
+  .choose .option.selected{background:var(--link);color:#fff}
+</style>
+<style>
+  :root{--nav:#0b0f14;--nav2:#0f141a;--bg:#0f141a;--white:#161d26;--line:#424650;--line2:#232b37;--text:#e9ebed;--muted:#8c94a3;--link:#42b4ff;--green:#2bb534;--green-bg:#00190229;--red:#ff7a7a;--blue-bg:#00142b;--blue-line:#1a4b80}
+  body{background:#0b0f14}
+  .switch{background:#0f141a;border-color:#232b37}.switch button{background:#161d26;color:#8c94a3;border-color:#424650}.switch button.on{background:#ff9900;color:#0f141a;border-color:#ff9900}
+  .frame{border-color:#232b37;box-shadow:0 10px 40px -10px #000}
+  .top{border-bottom:1px solid #232b37}
+  .btn{background:transparent;border-color:#42b4ff;color:#42b4ff}
+  .btn.primary{background:#ff9900;border-color:#ff9900;color:#0f141a}
+  .box{box-shadow:none;border:1px solid #232b37}
+  .hero{background:linear-gradient(180deg,#161d26,#0f141a)}
+  .preview{background:#161d26;color:#e9ebed;border:1px solid #232b37}
+  .preview .ph,.line{border-color:#232b37}
+  pre{background:#0b0f14}
+  .input,.sel,.seg{background:#0f141a;border-color:#656871;color:#c6c6cd}
+  .seg span{border-color:#656871}.seg .on{background:#42b4ff;color:#0f141a}
+  .sel.v{background:#2a1b00;border-color:#ff9900;color:#ffc56b}
+  .tag,.ti{background:#232b37;border-color:#2f3a48;color:#c6c6cd}
+  .ws{background:#161d26}.main{background:#0f141a}
+  .side,.out,.tabs,.ofoot{border-color:#232b37}
+  .si{color:#c6c6cd}.si:hover{background:#232b37}.si.on{background:#00142b}
+  .foot{background:#0f141a;border-color:#232b37}
+  .alert{background:#00190240;border-color:#2bb534}
+  .feat .fi{background:#00142b}
+  .bar{background:#232b37}
+  .st .c{border-color:#656871}
+  .choose .option{background:transparent}
+</style>
+</head>
+<body>
+<div class="switch">
+  <button class="on" onclick="show('l',this)">Landing</button>
+  <button onclick="show('t',this)">Templates</button>
+  <button onclick="show('w',this)">Workspace</button>
+</div>
+
+<!-- ============ LANDING ============ -->
+<section id="l" class="view on"><div class="frame">
+  <div class="top">
+    <div class="brand"><span class="mark"><i data-lucide="key-round"></i></span>RoleCraft</div>
+    <a href="#">Templates</a><a href="#">Builder</a><a href="#">GitHub</a>
+    <div class="sp"></div>
+  </div>
+  <div class="hero">
+    <div>
+      <div class="kick">IAM policy builder</div>
+      <h1>Least-privilege AWS roles, without writing JSON.</h1>
+      <p>Pick a template or describe access in plain sentences. Get the policy, the trust policy, and the AWS CLI or Terraform to create it.</p>
+      <div class="ctas"><button class="btn primary">Browse templates</button><button class="btn">Start from scratch</button></div>
+      <div class="facts">
+        <span><i data-lucide="shield-check"></i>Runs in your browser</span>
+        <span><i data-lucide="key"></i>No AWS credentials</span>
+        <span><i data-lucide="layers"></i>456 services</span>
+      </div>
+    </div>
+    <div class="preview">
+      <div class="ph"><i data-lucide="file-text"></i>S3 folder — read only <span class="desc">· template</span></div>
+      <div class="lines">
+        <div class="line"><span class="who"><i data-lucide="users"></i>analytics-team</span> can</div>
+        <div class="line"><span class="sel v">list + read<i data-lucide="chevron-down"></i></span> files in <span class="sel">data-lake / reports/<i data-lucide="chevron-down"></i></span></div>
+      </div>
+<pre>{ <span class="k">"Action"</span>: <span class="s">"s3:ListBucket"</span>,
+  <span class="k">"Resource"</span>: <span class="s">"arn:aws:s3:::data-lake"</span>,
+  <span class="k">"Condition"</span>: { <span class="k">"StringLike"</span>: {
+    <span class="k">"s3:prefix"</span>: <span class="c">"reports/*"</span> } } },
+{ <span class="k">"Action"</span>: <span class="s">"s3:GetObject"</span>,
+  <span class="k">"Resource"</span>: <span class="c">"arn:aws:s3:::data-lake/reports/*"</span> }</pre>
+    </div>
+  </div>
+  <div class="band">
+    <div class="box feat"><div class="fi"><i data-lucide="layout-template"></i></div><h3>Start from a template</h3><p>Common jobs — S3 folder access, GitHub deploys, EC2 operators — ready in a few clicks.</p></div>
+    <div class="box feat"><div class="fi"><i data-lucide="list-checks"></i></div><h3>Choose access visually</h3><p>Write rules as sentences or tick boxes. Folders, tags and service quirks handled for you.</p></div>
+    <div class="box feat"><div class="fi"><i data-lucide="terminal"></i></div><h3>Export and create</h3><p>Policy JSON, trust policy, AWS CLI (bash / PowerShell), Terraform, CloudFormation.</p></div>
+  </div>
+  <div class="mobile-note"><i data-lucide="monitor"></i><div><b>Shown only on phones:</b> “The builder works best on a laptop or desktop.” + <span class="link">Copy link</span> · <span class="link">Share</span>. Templates stay browsable.</div></div>
+  <div class="foot"><span>Built by Om Hinge</span><span>omhinge.cloud</span><div class="sp"></div><span>AWS data updated 12 Oct 2026 · Not affiliated with Amazon Web Services</span></div>
+</div></section>
+
+<!-- ============ TEMPLATES ============ -->
+<section id="t" class="view"><div class="frame">
+  <div class="top">
+    <div class="brand"><span class="mark"><i data-lucide="key-round"></i></span>RoleCraft</div>
+    <a href="#" style="color:#fff">Templates</a><a href="#">Builder</a><a href="#">GitHub</a><div class="sp"></div>
+  </div>
+  <div class="page">
+    <div class="crumb"><a href="#">RoleCraft</a> &rsaquo; Templates</div>
+    <div style="display:flex;align-items:flex-end;gap:12px">
+      <div><h1>Templates</h1><div class="desc">Least-privilege starting points. Fill in a few values, then customize.</div></div>
+      <div class="sp"></div><button class="btn">Paste existing policy</button><button class="btn primary">Start from scratch</button>
+    </div>
+    <div class="filters">
+      <div class="input"><i data-lucide="search"></i>Find templates or services</div>
+      <div class="seg"><span class="on">All</span><span>Storage</span><span>Compute</span><span>CI/CD</span><span>Containers</span><span>Serverless</span><span>AI/ML</span><span>Audit</span></div>
+    </div>
+    <div class="tgrid">
+      <div class="box tcard"><div class="thead"><span class="ti"><i data-lucide="folder-open"></i></span><div><h3>S3 folder — read only</h3><div class="meta">Group · user · role</div></div></div><p>List and download files in one folder. Other folders stay hidden.</p><div class="tags"><span class="tag">s3:ListBucket</span><span class="tag">s3:GetObject</span></div><div class="tfoot"><span class="ok"><i data-lucide="circle-check"></i>Least privilege</span><div class="sp"></div><button class="btn sm">Use</button></div></div>
+      <div class="box tcard"><div class="thead"><span class="ti"><i data-lucide="github"></i></span><div><h3>GitHub Actions → S3 deploy</h3><div class="meta">GitHub OIDC · repo + branch</div></div></div><p>Keyless static-site deploys with CloudFront invalidation.</p><div class="tags"><span class="tag">s3:PutObject</span><span class="tag">cloudfront:CreateInvalidation</span></div><div class="tfoot"><span class="ok"><i data-lucide="circle-check"></i>Least privilege</span><div class="sp"></div><button class="btn sm">Use</button></div></div>
+      <div class="box tcard"><div class="thead"><span class="ti"><i data-lucide="server"></i></span><div><h3>EC2 operator</h3><div class="meta">Group · user</div></div></div><p>Start, stop and reboot instances with a tag. No terminate.</p><div class="tags"><span class="tag">ec2:StartInstances</span><span class="tag">ec2:StopInstances</span></div><div class="tfoot"><span class="ok"><i data-lucide="circle-check"></i>Tag-scoped</span><div class="sp"></div><button class="btn sm">Use</button></div></div>
+      <div class="box tcard"><div class="thead"><span class="ti"><i data-lucide="hard-drive"></i></span><div><h3>EC2 app server baseline</h3><div class="meta">EC2 · instance profile</div></div></div><p>Session Manager access and CloudWatch logs. No SSH keys.</p><div class="tags"><span class="tag">ssm:*Session*</span><span class="tag">logs:PutLogEvents</span></div><div class="tfoot"><span class="ok"><i data-lucide="circle-check"></i>Least privilege</span><div class="sp"></div><button class="btn sm">Use</button></div></div>
+      <div class="box tcard"><div class="thead"><span class="ti"><i data-lucide="container"></i></span><div><h3>GitHub Actions → ECR push</h3><div class="meta">GitHub OIDC</div></div></div><p>Build and push images to one repository.</p><div class="tags"><span class="tag">ecr:PutImage</span><span class="tag">ecr:GetAuthorizationToken</span></div><div class="tfoot"><span class="ok"><i data-lucide="circle-check"></i>Repo-scoped</span><div class="sp"></div><button class="btn sm">Use</button></div></div>
+      <div class="box tcard"><div class="thead"><span class="ti"><i data-lucide="scan-text"></i></span><div><h3>Textract document pipeline</h3><div class="meta">Lambda · EC2</div></div></div><p>Read from an input folder, analyze, write results to an output folder.</p><div class="tags"><span class="tag">textract:AnalyzeDocument</span><span class="tag">s3:GetObject</span></div><div class="tfoot"><span class="ok"><i data-lucide="circle-check"></i>Least privilege</span><div class="sp"></div><button class="btn sm">Use</button></div></div>
+    </div>
+    <div style="text-align:center;margin-top:16px"><span class="link">Show all 13 templates</span></div>
+  </div>
+</div></section>
+
+<!-- ============ WORKSPACE ============ -->
+<section id="w" class="view"><div class="frame">
+  <div class="top">
+    <div class="brand"><span class="mark"><i data-lucide="key-round"></i></span>RoleCraft</div>
+    <a href="#">Templates</a><a href="#" style="color:#fff">Builder</a><a href="#">GitHub</a><div class="sp"></div>
+    <button class="tbtn"><i data-lucide="link"></i>Share</button>
+  </div>
+  <div class="ws">
+    <aside class="side">
+      <div class="input" style="flex:none"><i data-lucide="search"></i>Search services</div>
+      <h3>In this role</h3>
+      <div class="si on"><i data-lucide="database"></i>Amazon S3<span class="n">2</span></div>
+      <div class="si"><i data-lucide="server"></i>Amazon EC2<span class="n">1</span></div>
+      <div class="si"><i data-lucide="scan-text"></i>Amazon Textract<span class="n">1</span></div>
+      <h3>Popular</h3>
+      <div class="si"><i data-lucide="zap"></i>AWS Lambda</div>
+      <div class="si"><i data-lucide="container"></i>Amazon ECR</div>
+      <div class="si"><i data-lucide="boxes"></i>Amazon EKS</div>
+      <div class="si"><i data-lucide="table"></i>Amazon DynamoDB</div>
+      <div class="si"><i data-lucide="brain"></i>Amazon Bedrock</div>
+      <h3>Browse</h3>
+      <div class="si"><i data-lucide="list"></i>All services A–Z</div>
+    </aside>
+
+    <main class="main">
+      <div class="steps">
+        <div class="st done"><span class="c">✓</span>Trusted entity</div>
+        <div class="st cur"><span class="c">2</span>Permissions</div>
+        <div class="st"><span class="c">3</span>Review and export</div>
+      </div>
+      <div class="box">
+        <div class="bh"><h2>Permissions</h2><span class="desc">What can this role do?</span><div class="sp"></div>
+          <div class="seg"><span class="on">Sentences</span><span>Grid</span></div></div>
+        <div class="bb rules">
+          <div class="line"><span class="who"><i data-lucide="server"></i>EC2 instances</span> using this role can</div>
+          <div class="line"><span class="sel v">list + read<i data-lucide="chevron-down"></i></span> files in <span class="sel">data-lake / reports/<i data-lucide="chevron-down"></i></span><i class="x" data-lucide="x"></i></div>
+          <div class="line"><span class="sel v">read + write<i data-lucide="chevron-down"></i></span> files in <span class="sel">data-lake / uploads/<i data-lucide="chevron-down"></i></span><i class="x" data-lucide="x"></i></div>
+          <div class="line"><span class="sel v">start / stop<i data-lucide="chevron-down"></i></span> <span class="sel">instances tagged env=dev<i data-lucide="chevron-down"></i></span><i class="x" data-lucide="x"></i></div>
+          <div class="line"><span class="sel v">analyze documents<i data-lucide="chevron-down"></i></span> with <span class="sel">Textract<i data-lucide="chevron-down"></i></span><i class="x" data-lucide="x"></i></div>
+          <div class="add"><i data-lucide="plus"></i>Add permission</div>
+        </div>
+      </div>
+      <div class="alert"><i data-lucide="circle-check"></i><div><b>Summary</b>Can browse and download from reports/, upload to uploads/, start and stop dev servers, and run Textract. <span class="no">Cannot delete files or terminate servers.</span></div></div>
+      <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:16px"><button class="btn">Previous</button><button class="btn primary">Next</button></div>
+    </main>
+
+    <aside class="out">
+      <div class="tabs"><span class="tab on">Policy</span><span class="tab">Trust</span><span class="tab">CLI</span><span class="tab">Terraform</span><span class="tab">CFN</span></div>
+<pre>{
+  <span class="k">"Version"</span>: <span class="s">"2012-10-17"</span>,
+  <span class="k">"Statement"</span>: [
+    { <span class="k">"Sid"</span>: <span class="s">"S3ListFolders"</span>,
+      <span class="k">"Action"</span>: <span class="s">"s3:ListBucket"</span>,
+      <span class="k">"Condition"</span>: { <span class="k">"StringLike"</span>: {
+        <span class="k">"s3:prefix"</span>: [<span class="c">"reports/*"</span>, <span class="c">"uploads/*"</span>] } } },
+    { <span class="k">"Sid"</span>: <span class="s">"S3ReadReports"</span>,
+      <span class="k">"Action"</span>: <span class="s">"s3:GetObject"</span>,
+      <span class="k">"Resource"</span>: <span class="c">"…:::data-lake/reports/*"</span> },
+    { <span class="k">"Sid"</span>: <span class="s">"S3ReadWriteUploads"</span>,
+      <span class="k">"Action"</span>: [<span class="s">"s3:GetObject"</span>, <span class="s">"s3:PutObject"</span>],
+      <span class="k">"Resource"</span>: <span class="c">"…:::data-lake/uploads/*"</span> },
+    { <span class="k">"Sid"</span>: <span class="s">"Ec2StartStopDev"</span>,
+      <span class="k">"Action"</span>: [<span class="s">"ec2:StartInstances"</span>, <span class="s">"ec2:StopInstances"</span>],
+      <span class="k">"Condition"</span>: { <span class="k">"StringEquals"</span>: {
+        <span class="k">"aws:ResourceTag/env"</span>: <span class="c">"dev"</span> } } },
+    { <span class="k">"Sid"</span>: <span class="s">"TextractAnalyze"</span>,
+      <span class="k">"Action"</span>: <span class="s">"textract:AnalyzeDocument"</span>,
+      <span class="k">"Resource"</span>: <span class="s">"*"</span> }
+  ]
+}</pre>
+      <div class="ofoot">
+        <div class="status"><span class="g"><i data-lucide="circle-check"></i>No risky permissions</span><span class="i"><i data-lucide="info"></i>Textract requires "*"</span></div>
+        <div><div class="meterlbl"><span>Policy size</span><span>1,388 / 6,144</span></div><div class="bar"><i></i></div></div>
+        <div class="orow"><button class="btn sm"><i data-lucide="copy"></i>Copy</button><button class="btn sm primary"><i data-lucide="download"></i>Export</button></div>
+      </div>
+    </aside>
+  </div>
+</div></section>
+
+<div class="choose">
+  <div class="option" data-choice="dark-approve" onclick="toggleSelect(this)">Approve this style</div>
+  <div class="option" data-choice="dark-tweak" onclick="toggleSelect(this)">Tweak something</div>
+</div>
+
+<script>
+function show(id,btn){document.querySelectorAll('.view').forEach(v=>v.classList.toggle('on',v.id===id));document.querySelectorAll('.switch button').forEach(b=>b.classList.toggle('on',b===btn));scrollTo(0,0)}
+if(typeof toggleSelect!=='function'){window.toggleSelect=function(el){el.parentElement.querySelectorAll('.option').forEach(o=>o.classList.remove('selected'));el.classList.add('selected')}}
+if(window.lucide)lucide.createIcons();
+</script>
+</body>
+</html>
