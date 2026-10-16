@@ -1,0 +1,1 @@
+{"key":"marketplacecommerceanalytics","name":"Marketplacecommerceanalytics","category":"Other","actions":[{"name":"GenerateDataSet","level":"Write","resources":[],"label":"Generate data set","conditionKeys":[]},{"name":"StartSupportDataExport","level":"Write","resources":[],"label":"Start support data export","conditionKeys":[]}],"resources":[],"conditionKeys":[]}

@@ -1,0 +1,1 @@
+{"key":"mediaimport","name":"Mediaimport","category":"Other","actions":[{"name":"CreateDatabaseBinarySnapshot","level":"Write","resources":[],"label":"Create database binary snapshot","conditionKeys":[]}],"resources":[],"conditionKeys":[]}

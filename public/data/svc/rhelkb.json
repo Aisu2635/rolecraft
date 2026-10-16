@@ -1,0 +1,1 @@
+{"key":"rhelkb","name":"Rhelkb","category":"Other","actions":[{"name":"GetRhelURL","level":"Read","resources":[],"label":"Get rhel URL","conditionKeys":[]}],"resources":[],"conditionKeys":[]}

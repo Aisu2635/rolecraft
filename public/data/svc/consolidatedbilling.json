@@ -1,0 +1,1 @@
+{"key":"consolidatedbilling","name":"Consolidatedbilling","category":"Other","actions":[{"name":"GetAccountBillingRole","level":"Read","resources":[],"label":"Get account billing role","conditionKeys":[]},{"name":"ListLinkedAccounts","level":"List","resources":[],"label":"List linked accounts","conditionKeys":[]}],"resources":[],"conditionKeys":[]}

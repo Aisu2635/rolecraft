@@ -1,0 +1,1 @@
+{"key":"rds-db","name":"Rds Db","category":"Other","actions":[{"name":"connect","level":"Permissions management","resources":["db-user"],"label":"Connect","conditionKeys":[]}],"resources":[{"name":"db-user","arnFormats":["arn:${Partition}:rds-db:${Region}:${Account}:dbuser:${DbiResourceId}/${DbUserName}"],"conditionKeys":[]}],"conditionKeys":[]}

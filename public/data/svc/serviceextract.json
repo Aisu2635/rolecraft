@@ -1,0 +1,1 @@
+{"key":"serviceextract","name":"Serviceextract","category":"Other","actions":[{"name":"GetConfig","level":"Read","resources":[],"label":"Get config","conditionKeys":[]}],"resources":[],"conditionKeys":[]}

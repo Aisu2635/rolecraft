@@ -1,0 +1,1 @@
+{"key":"inspector-scan","name":"Inspector Scan","category":"Other","actions":[{"name":"ScanSbom","level":"Read","resources":[],"label":"Scan sbom","conditionKeys":[]}],"resources":[],"conditionKeys":[]}

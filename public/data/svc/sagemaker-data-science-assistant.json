@@ -1,0 +1,1 @@
+{"key":"sagemaker-data-science-assistant","name":"Sagemaker Data Science Assistant","category":"Other","actions":[{"name":"SendConversation","level":"Write","resources":[],"label":"Send conversation","conditionKeys":[]}],"resources":[],"conditionKeys":[]}

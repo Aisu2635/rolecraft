@@ -1,0 +1,1 @@
+{"key":"ecs-mcp","name":"Ecs Mcp","category":"Other","actions":[{"name":"InvokeReadOnlyTools","level":"Read","resources":[],"label":"Invoke read only tools","conditionKeys":[]},{"name":"UseMcp","level":"Read","resources":[],"label":"Use mcp","conditionKeys":[]}],"resources":[],"conditionKeys":[]}

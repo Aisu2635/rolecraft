@@ -1,0 +1,1 @@
+{"key":"codeguru","name":"Codeguru","category":"Other","actions":[{"name":"GetCodeGuruFreeTrialSummary","level":"Read","resources":[],"label":"Get code guru free trial summary","conditionKeys":[]}],"resources":[],"conditionKeys":[]}

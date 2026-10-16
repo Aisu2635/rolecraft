@@ -1,0 +1,1 @@
+{"key":"startups","name":"Startups","category":"Other","actions":[{"name":"GetSpendSummary","level":"Read","resources":[],"label":"Get spend summary","conditionKeys":[]}],"resources":[],"conditionKeys":[]}

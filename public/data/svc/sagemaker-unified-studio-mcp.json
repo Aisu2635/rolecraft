@@ -1,0 +1,1 @@
+{"key":"sagemaker-unified-studio-mcp","name":"Sagemaker Unified Studio Mcp","category":"Other","actions":[{"name":"AuthorizeVpce","level":"Read","resources":[],"label":"Authorize vpce","conditionKeys":[]}],"resources":[],"conditionKeys":[]}
