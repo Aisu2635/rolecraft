@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import ec2Raw from "../__fixtures__/aws/ec2.json";
+import ec2Full from "../../../public/data/svc/ec2.json";
 import iamRaw from "../__fixtures__/aws/iam.json";
 import logsRaw from "../__fixtures__/aws/logs.json";
 import s3Raw from "../__fixtures__/aws/s3.json";
@@ -8,6 +9,7 @@ import textractRaw from "../__fixtures__/aws/textract.json";
 import type { BuildContext } from "../arn";
 import { createCatalog } from "../catalog/catalog";
 import { toSlimService } from "../catalog/transform";
+import type { SlimService } from "../types";
 import type { Trust } from "../model/model";
 import { buildTrust } from "../trust/trust";
 import { validateIdentityPolicy, validateTrustPolicy } from "./policy";
@@ -18,6 +20,31 @@ const allow = (Action: unknown, Resource: unknown = "*", extra: object = {}) => 
 const ids = (d: unknown) => validateIdentityPolicy(d, catalog).map((i) => i.id);
 const BUCKET = "arn:aws:s3:::my-bucket";
 const OBJ = "arn:aws:s3:::my-bucket/reports/*";
+
+describe("performance on full ec2 data", () => {
+  const full = createCatalog([ec2Full as unknown as SlimService]);
+  const run = (arns: string[]) =>
+    validateIdentityPolicy(doc(allow("ec2:*", arns)), full).map((i) => i.id);
+  it("ec2:* on ordinary wildcard ARNs is fast", () => {
+    run(["arn:aws:ec2:*:*:instance/*"]); // warm caches and JIT
+    const start = performance.now();
+    const r = run(["arn:aws:ec2:*:*:instance/*", "arn:aws:ec2:*:*:volume/*", "arn:aws:ec2:*:*:*"]);
+    const ms = performance.now() - start;
+    console.log("ec2:* x3 ARNs ms", ms.toFixed(1));
+    expect(ms).toBeLessThan(150);
+    expect(r).toEqual(["V_ACTION_RESOURCE_MISMATCH"]);
+    expect(run(["arn:aws:ec2:*:*:*"])).toEqual(["V_ACTION_RESOURCE_MISMATCH"]);
+  });
+  it("ec2:* on 18 long wildcard ARNs is fast", () => {
+    run(["arn:aws:ec2:*:*:instance/*"]); // warm caches and JIT
+    const arns = Array.from({ length: 18 }, (_, i) => `arn:aws:ec2:*:*:${"*a?".repeat(98)}${i}`);
+    const start = performance.now();
+    run(arns);
+    const ms = performance.now() - start;
+    console.log("ec2:* x18 long ARNs ms", ms.toFixed(1));
+    expect(ms).toBeLessThan(500);
+  });
+});
 
 describe("wildcard-aware validation", () => {
   const LG = "arn:aws:logs:us-east-1:123456789012:log-group:/aws/lambda/fn:*";

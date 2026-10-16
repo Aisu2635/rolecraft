@@ -255,12 +255,45 @@ function intersects(arn: string, fmt: FTok[]): boolean {
 
 const hasWildcard = (s: string): boolean => s.includes("*") || s.includes("?");
 
-function headerCompatible(format: string, field: string): boolean {
-  if (format === "${Partition}") return intersects(field, formatTokens("aws"));
-  if (format === "${Region}" || format === "${Account}") {
-    return hasWildcard(field) || fieldMatches(toField(format), field);
+type HeaderTok = "partition" | "region" | "account" | FTok[];
+
+interface TokenizedFormat {
+  resource: string;
+  header: HeaderTok[]; // partition, service, region, account
+  res: FTok[];
+}
+
+const tokenCache = new WeakMap<SlimService, TokenizedFormat[]>();
+
+function tokenized(svc: SlimService): TokenizedFormat[] {
+  let c = tokenCache.get(svc);
+  if (!c) {
+    c = svc.resources.flatMap((r) =>
+      r.arnFormats.flatMap((fmt): TokenizedFormat[] => {
+        const f = splitFields(fmt, 5);
+        if (f.length !== 6 || f[0] !== "arn") return [];
+        const header = [1, 2, 3, 4].map((i): HeaderTok => {
+          const text = f[i] as string;
+          if (text === "${Partition}") return "partition";
+          if (text === "${Region}") return "region";
+          if (text === "${Account}") return "account";
+          return formatTokens(text);
+        });
+        return [{ resource: r.name, header, res: formatTokens(f[5] as string) }];
+      }),
+    );
+    tokenCache.set(svc, c);
   }
-  return intersects(field, formatTokens(format));
+  return c;
+}
+
+const AWS_TOKENS = formatTokens("aws");
+
+function headerCompatible(h: HeaderTok, field: string): boolean {
+  if (h === "partition") return intersects(field, AWS_TOKENS);
+  if (h === "region") return hasWildcard(field) || fieldMatches({ kind: "region" }, field);
+  if (h === "account") return hasWildcard(field) || fieldMatches({ kind: "account" }, field);
+  return intersects(field, h);
 }
 
 /**
@@ -279,17 +312,13 @@ export function matchableTypes(arn: string, svc: SlimService): string[] {
     while (parts.length < 6) parts.push("*");
   }
   const out = new Set<string>();
-  for (const r of svc.resources) {
-    for (const fmt of r.arnFormats) {
-      const f = splitFields(fmt, 5);
-      if (f.length !== 6 || f[0] !== "arn") continue;
-      const ok =
-        [1, 2, 3, 4].every((i) => headerCompatible(f[i] as string, parts[i] as string)) &&
-        intersects(parts[5] as string, formatTokens(f[5] as string));
-      if (ok) {
-        out.add(r.name);
-        break;
-      }
+  for (const f of tokenized(svc)) {
+    if (out.has(f.resource)) continue;
+    if (
+      f.header.every((h, i) => headerCompatible(h, parts[i + 1] as string)) &&
+      intersects(parts[5] as string, f.res)
+    ) {
+      out.add(f.resource);
     }
   }
   return [...out].sort();
