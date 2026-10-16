@@ -125,3 +125,68 @@ describe("classifyArn", () => {
     expect(classifyArn("arn:aws:x:::q?foo", svc)).toEqual(["multi"]);
   });
 });
+
+describe("classifyArn robustness", () => {
+  const svc = {
+    key: "svc",
+    name: "Svc",
+    category: "c",
+    actions: [],
+    conditionKeys: [],
+    resources: [
+      {
+        name: "snap",
+        arnFormats: [
+          "arn:${Partition}:svc:${Region}:${Account}:catalog/${A}/engagement/${B}/resource/${C}/${D}/template/${E}/${F}",
+          "short",
+        ],
+        conditionKeys: [],
+      },
+    ],
+  } as unknown as Parameters<typeof classifyArn>[1];
+
+  it("is not vulnerable to ReDoS on near-miss input", () => {
+    const input =
+      "arn:aws:svc:us-east-1:123456789012:catalog/" +
+      "a/engagement/a/resource/a/a/template/".repeat(82) +
+      "x";
+    expect(input.length).toBeGreaterThan(2900);
+    const t0 = performance.now();
+    const r = classifyArn(input, svc);
+    const ms = performance.now() - t0;
+    expect(r).toEqual([]);
+    expect(ms).toBeLessThan(50);
+  });
+
+  it("is fast on a near-miss that stays under the length cap", () => {
+    const input =
+      "arn:aws:svc:us-east-1:123456789012:catalog/" +
+      "a/engagement/a/resource/a/a/template/".repeat(50) +
+      "x";
+    const t0 = performance.now();
+    classifyArn(input, svc);
+    expect(performance.now() - t0).toBeLessThan(50);
+  });
+
+  it("matches a valid ARN for the many-placeholder format", () => {
+    expect(
+      classifyArn(
+        "arn:aws:svc:us-east-1:123456789012:catalog/1/engagement/2/resource/3/4/template/5/6",
+        svc,
+      ),
+    ).toEqual(["snap"]);
+  });
+
+  it("rejects ARNs longer than 2048 characters", () => {
+    expect(classifyArn("arn:aws:s3:::" + "a".repeat(2035), s3)).toEqual([
+      "bucket",
+    ]);
+    expect(classifyArn("arn:aws:s3:::" + "a".repeat(2036), s3)).toEqual([]);
+  });
+
+  it("rejects ARNs with too few fields or wrong prefix", () => {
+    expect(classifyArn("arn:aws:s3:::", s3)).toEqual([]);
+    expect(classifyArn("arn:aws:s3", s3)).toEqual([]);
+    expect(classifyArn("urn:aws:s3:::b", s3)).toEqual([]);
+  });
+});
