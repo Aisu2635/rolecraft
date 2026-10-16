@@ -1,0 +1,127 @@
+import { describe, expect, it } from "vitest";
+import ec2Raw from "./__fixtures__/aws/ec2.json";
+import logsRaw from "./__fixtures__/aws/logs.json";
+import s3Raw from "./__fixtures__/aws/s3.json";
+import { classifyArn, fillArn } from "./arn";
+import { toSlimService } from "./catalog/transform";
+
+const s3 = toSlimService(s3Raw);
+const logs = toSlimService(logsRaw);
+const ec2 = toSlimService(ec2Raw);
+
+describe("fillArn", () => {
+  it("fills partition and named values", () => {
+    expect(
+      fillArn(
+        "arn:${Partition}:s3:::${BucketName}",
+        { BucketName: "data-lake" },
+        { partition: "aws" },
+      ),
+    ).toBe("arn:aws:s3:::data-lake");
+  });
+
+  it("substitutes * for missing account, region and values", () => {
+    expect(
+      fillArn(
+        "arn:${Partition}:logs:${Region}:${Account}:log-group:${LogGroupName}",
+        { LogGroupName: "/aws/lambda/x" },
+        { partition: "aws" },
+      ),
+    ).toBe("arn:aws:logs:*:*:log-group:/aws/lambda/x");
+    expect(
+      fillArn("arn:${Partition}:s3:::${BucketName}", {}, { partition: "aws" }),
+    ).toBe("arn:aws:s3:::*");
+  });
+
+  it("uses context region and account when given", () => {
+    expect(
+      fillArn(
+        "arn:${Partition}:ec2:${Region}:${Account}:instance/${InstanceId}",
+        { InstanceId: "i-1" },
+        { partition: "aws", region: "eu-west-1", accountId: "123456789012" },
+      ),
+    ).toBe("arn:aws:ec2:eu-west-1:123456789012:instance/i-1");
+  });
+});
+
+describe("classifyArn", () => {
+  it("classifies an S3 bucket ARN", () => {
+    expect(classifyArn("arn:aws:s3:::data-lake", s3)).toEqual(["bucket"]);
+  });
+
+  it("classifies an S3 object ARN and not as bucket", () => {
+    const r = classifyArn("arn:aws:s3:::data-lake/reports/*", s3);
+    expect(r).toContain("object");
+    expect(r).not.toContain("bucket");
+  });
+
+  it("classifies a log group ARN with wildcard suffix", () => {
+    expect(
+      classifyArn(
+        "arn:aws:logs:us-east-1:123456789012:log-group:/aws/lambda/x:*",
+        logs,
+      ),
+    ).toContain("log-group");
+  });
+
+  it("classifies an EC2 instance ARN", () => {
+    expect(
+      classifyArn("arn:aws:ec2:us-east-1:123456789012:instance/i-0abc", ec2),
+    ).toEqual(["instance"]);
+  });
+
+  it("returns [] for non-matching service and for *", () => {
+    expect(classifyArn("arn:aws:s3:::data-lake", ec2)).toEqual([]);
+    expect(classifyArn("*", s3)).toEqual([]);
+  });
+
+  it("accepts wildcard region/account and empty account", () => {
+    expect(classifyArn("arn:aws:ec2:*:*:instance/*", ec2)).toEqual([
+      "instance",
+    ]);
+    expect(classifyArn("arn:aws:ec2:us-east-1::image/ami-1", ec2)).toEqual([
+      "image",
+    ]);
+  });
+
+  it("rejects other partitions and malformed accounts", () => {
+    expect(classifyArn("arn:aws-cn:s3:::data-lake", s3)).toEqual([]);
+    expect(classifyArn("arn:aws:ec2:us-east-1:123:instance/i-1", ec2)).toEqual(
+      [],
+    );
+  });
+
+  it("returns sorted names on ties and is stable across calls (cache)", () => {
+    const a = classifyArn("arn:aws:s3:::b/k", s3);
+    expect(a).toEqual([...a].sort());
+    expect(classifyArn("arn:aws:s3:::b/k", s3)).toEqual(a);
+  });
+
+  it("escapes regex metacharacters in literal text", () => {
+    const svc = {
+      key: "x",
+      name: "X",
+      category: "c",
+      actions: [],
+      conditionKeys: [],
+      resources: [
+        {
+          name: "dot",
+          arnFormats: ["arn:${Partition}:x:::a.b"],
+          conditionKeys: [],
+        },
+        {
+          name: "multi",
+          arnFormats: [
+            "arn:${Partition}:x:::q?${N}",
+            "arn:${Partition}:x:::zz",
+          ],
+          conditionKeys: [],
+        },
+      ],
+    } as unknown as Parameters<typeof classifyArn>[1];
+    expect(classifyArn("arn:aws:x:::a.b", svc)).toEqual(["dot"]);
+    expect(classifyArn("arn:aws:x:::aXb", svc)).toEqual([]);
+    expect(classifyArn("arn:aws:x:::q?foo", svc)).toEqual(["multi"]);
+  });
+});
