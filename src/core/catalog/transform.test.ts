@@ -172,6 +172,12 @@ describe("assertSanity", () => {
 
 describe("ACCESS_LEVELS", () => {
   it("is ordered", () => {
-    expect(ACCESS_LEVELS).toEqual(["List", "Read", "Write", "Tagging", "Permissions management"]);
+    expect(ACCESS_LEVELS).toEqual([
+      "List",
+      "Read",
+      "Write",
+      "Tagging",
+      "Permissions management",
+    ]);
   });
 });
