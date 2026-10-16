@@ -183,3 +183,114 @@ export function classifyArn(arn: string, svc: SlimService): string[] {
     .map(([name]) => name)
     .sort();
 }
+
+/** Characters a placeholder may not match, by placeholder name (default: none). */
+const EXCLUDED: Record<string, string> = {
+  BucketName: "/:",
+  AccessPointName: "/:",
+  FunctionName: "/:",
+  TableName: "/:",
+  QueueName: "/:",
+  TopicName: "/:",
+  LogGroupName: ":",
+};
+
+/** Format-side token: a literal char, or a placeholder (one-or-more of an allowed set). */
+type FTok = { lit: string } | { ph: string; star: boolean };
+
+function formatTokens(text: string): FTok[] {
+  const out: FTok[] = [];
+  let last = 0;
+  for (const m of text.matchAll(PLACEHOLDER)) {
+    for (const ch of text.slice(last, m.index)) out.push({ lit: ch });
+    out.push({ ph: m[1] as string, star: false }, { ph: m[1] as string, star: true });
+    last = m.index + m[0].length;
+  }
+  for (const ch of text.slice(last)) out.push({ lit: ch });
+  return out;
+}
+
+/** Can some character be consumed by both the ARN glob char and the format token? */
+function compatible(a: string, f: FTok): boolean {
+  const arnAny = a === "*" || a === "?";
+  if ("lit" in f) return arnAny || a === f.lit;
+  return arnAny || !(EXCLUDED[f.ph] ?? "").includes(a);
+}
+
+/**
+ * Whether the language of an ARN-side glob (`*`, `?`) and a format (literals and
+ * placeholders) intersect. Iterative reachability over the product automaton,
+ * O(n*m) time and space.
+ */
+function intersects(arn: string, fmt: FTok[]): boolean {
+  const n = arn.length;
+  const m = fmt.length;
+  const seen = new Uint8Array((n + 1) * (m + 1));
+  const stack: number[] = [0];
+  seen[0] = 1;
+  const visit = (i: number, j: number): void => {
+    const k = i * (m + 1) + j;
+    if (!seen[k]) {
+      seen[k] = 1;
+      stack.push(k);
+    }
+  };
+  while (stack.length > 0) {
+    const k = stack.pop() as number;
+    const i = Math.floor(k / (m + 1));
+    const j = k % (m + 1);
+    if (i === n && j === m) return true;
+    const a = i < n ? (arn[i] as string) : undefined;
+    const f = j < m ? (fmt[j] as FTok) : undefined;
+    const arnStar = a === "*";
+    const fmtStar = f !== undefined && "ph" in f && f.star;
+    if (a !== undefined && arnStar) visit(i + 1, j);
+    if (f !== undefined && fmtStar) visit(i, j + 1);
+    if (a !== undefined && f !== undefined && compatible(a, f)) {
+      visit(arnStar ? i : i + 1, fmtStar ? j : j + 1);
+    }
+  }
+  return false;
+}
+
+const hasWildcard = (s: string): boolean => s.includes("*") || s.includes("?");
+
+function headerCompatible(format: string, field: string): boolean {
+  if (format === "${Partition}") return intersects(field, formatTokens("aws"));
+  if (format === "${Region}" || format === "${Account}") {
+    return hasWildcard(field) || fieldMatches(toField(format), field);
+  }
+  return intersects(field, formatTokens(format));
+}
+
+/**
+ * Resource types a policy ARN can apply to. Concrete ARNs behave exactly like
+ * `classifyArn`. An ARN containing `*`/`?` is a glob over request ARNs, so every
+ * type with at least one format whose language can intersect it is returned.
+ * Sorted. No RegExp touches user input.
+ */
+export function matchableTypes(arn: string, svc: SlimService): string[] {
+  if (arn.length > MAX_ARN_LENGTH) return [];
+  if (!hasWildcard(arn)) return classifyArn(arn, svc);
+  const parts = splitFields(arn, 5);
+  if (parts[0] !== "arn") return [];
+  if (parts.length < 6) {
+    if (parts[parts.length - 1] !== "*") return [];
+    while (parts.length < 6) parts.push("*");
+  }
+  const out = new Set<string>();
+  for (const r of svc.resources) {
+    for (const fmt of r.arnFormats) {
+      const f = splitFields(fmt, 5);
+      if (f.length !== 6 || f[0] !== "arn") continue;
+      const ok =
+        [1, 2, 3, 4].every((i) => headerCompatible(f[i] as string, parts[i] as string)) &&
+        intersects(parts[5] as string, formatTokens(f[5] as string));
+      if (ok) {
+        out.add(r.name);
+        break;
+      }
+    }
+  }
+  return [...out].sort();
+}

@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import ec2Raw from "./__fixtures__/aws/ec2.json";
 import logsRaw from "./__fixtures__/aws/logs.json";
 import s3Raw from "./__fixtures__/aws/s3.json";
-import { classifyArn, fillArn } from "./arn";
+import lambdaRaw from "../../public/data/svc/lambda.json";
+import { classifyArn, fillArn, matchableTypes } from "./arn";
+import type { SlimService } from "./types";
 import { toSlimService } from "./catalog/transform";
 
 const s3 = toSlimService(s3Raw);
@@ -188,5 +190,55 @@ describe("classifyArn robustness", () => {
     expect(classifyArn("arn:aws:s3:::", s3)).toEqual([]);
     expect(classifyArn("arn:aws:s3", s3)).toEqual([]);
     expect(classifyArn("urn:aws:s3:::b", s3)).toEqual([]);
+  });
+});
+
+describe("matchableTypes", () => {
+  const logs = toSlimService(logsRaw);
+  const lambda = lambdaRaw as unknown as SlimService;
+  const LG = "arn:aws:logs:us-east-1:123456789012:log-group:/aws/lambda/fn";
+
+  it("delegates to classifyArn for concrete ARNs", () => {
+    expect(matchableTypes("arn:aws:s3:::b/k", s3)).toEqual(classifyArn("arn:aws:s3:::b/k", s3));
+    expect(matchableTypes("not-an-arn", s3)).toEqual([]);
+  });
+  it("handles wildcard ARNs over log groups", () => {
+    const t = matchableTypes(LG + ":*", logs);
+    expect(t).toContain("log-stream");
+    expect(t).not.toContain("log-group");
+    const all = matchableTypes("arn:aws:logs:*:*:*", logs);
+    expect(all).toEqual(expect.arrayContaining(["log-group", "log-stream"]));
+    expect(matchableTypes(LG, logs)).toEqual(["log-group"]);
+  });
+  it("handles wildcard ARNs over s3", () => {
+    const o = matchableTypes("arn:aws:s3:::b/*", s3);
+    expect(o).toContain("object");
+    expect(o).not.toContain("bucket");
+    expect(matchableTypes("arn:aws:s3:::*", s3)).toEqual(expect.arrayContaining(["bucket", "object"]));
+    expect(matchableTypes("arn:aws:s3:::b?", s3)).toContain("bucket");
+  });
+  it("handles wildcard ARNs over lambda", () => {
+    const t = matchableTypes("arn:aws:lambda:us-east-1:123456789012:function:f:*", lambda);
+    expect(t).toEqual(expect.arrayContaining(["function alias", "function version"]));
+    expect(t).not.toContain("function");
+  });
+  it("covers short trailing-star ARNs and rejects bad ones", () => {
+    expect(matchableTypes("arn:aws:logs:*", logs)).toEqual(expect.arrayContaining(["log-group"]));
+    expect(matchableTypes("arn:aws:logs:us-east-1", logs)).toEqual([]);
+    expect(matchableTypes("urn:aws:logs:*:*:*", logs)).toEqual([]);
+    expect(matchableTypes("arn:aws:s3:::" + "*".repeat(3000), s3)).toEqual([]);
+  });
+  it("checks header fields", () => {
+    expect(matchableTypes("arn:aws:ec2:*:*:*", logs)).toEqual([]);
+    expect(matchableTypes("arn:gov:logs:*:*:*", logs)).toEqual([]);
+    expect(matchableTypes("arn:*:logs:*:*:*", logs)).toContain("log-group");
+    expect(matchableTypes("arn:aws:logs:us-east-1:notanaccount:*", logs)).toEqual([]);
+  });
+  it("is fast on adversarial wildcard ARNs", () => {
+    const adv = "arn:aws:logs:*:*:" + "*a".repeat(997) + "?";
+    const start = performance.now();
+    matchableTypes(adv, logs);
+    matchableTypes("arn:aws:lambda:*:*:" + "*a?".repeat(660), lambda);
+    expect(performance.now() - start).toBeLessThan(50);
   });
 });

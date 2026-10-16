@@ -19,6 +19,30 @@ const ids = (d: unknown) => validateIdentityPolicy(d, catalog).map((i) => i.id);
 const BUCKET = "arn:aws:s3:::my-bucket";
 const OBJ = "arn:aws:s3:::my-bucket/reports/*";
 
+describe("wildcard-aware validation", () => {
+  const LG = "arn:aws:logs:us-east-1:123456789012:log-group:/aws/lambda/fn:*";
+  it("accepts AWS-standard log stream policies", () => {
+    expect(ids(doc(allow(["logs:CreateLogStream", "logs:PutLogEvents"], LG)))).toEqual([]);
+  });
+  it("rejects CreateLogGroup on a log stream ARN", () => {
+    expect(ids(doc(allow("logs:CreateLogGroup", LG)))).toEqual(["V_ACTION_RESOURCE_MISMATCH"]);
+  });
+  it("accepts any logs actions on arn:aws:logs:*:*:*", () => {
+    expect(ids(doc(allow(["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"], "arn:aws:logs:*:*:*")))).toEqual([]);
+  });
+  it("still rejects ListBucket on arn:aws:s3:::b/*", () => {
+    expect(ids(doc(allow("s3:ListBucket", "arn:aws:s3:::b/*")))).toEqual(["V_ACTION_RESOURCE_MISMATCH"]);
+  });
+  it("wildcard actions are linear-time", () => {
+    const start = performance.now();
+    expect(ids(doc(allow("s3:" + "*".repeat(30) + "Z")))).toEqual(["V_UNKNOWN_ACTION"]);
+    expect(performance.now() - start).toBeLessThan(50);
+  });
+  it("overlong actions yield V_ACTION_FORMAT without throwing", () => {
+    expect(ids(doc(allow("s3:" + "a".repeat(100000))))).toEqual(["V_ACTION_FORMAT"]);
+  });
+});
+
 describe("validateIdentityPolicy", () => {
   it("accepts a correct S3 folder policy", () => {
     const d = doc(

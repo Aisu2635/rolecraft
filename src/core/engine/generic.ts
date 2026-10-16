@@ -1,4 +1,4 @@
-import { classifyArn, type BuildContext } from "../arn";
+import { matchableTypes, type BuildContext } from "../arn";
 import type { AccessSelection, Grant } from "../model/model";
 import type { Issue, SlimAction, SlimService, Statement } from "../types";
 import { baseSid } from "./sid";
@@ -113,7 +113,7 @@ export function buildGenericStatements(
   const classified = new Map<string, string[]>();
   for (const arn of arns) {
     if (arn === "*") continue;
-    const types = classifyArn(arn, svc);
+    const types = matchableTypes(arn, svc);
     if (types.length === 0) {
       issue(
         "E_FOREIGN_ARN",

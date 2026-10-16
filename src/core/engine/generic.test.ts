@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import ec2Raw from "../__fixtures__/aws/ec2.json";
 import s3Raw from "../__fixtures__/aws/s3.json";
+import logsRaw from "../__fixtures__/aws/logs.json";
 import textractRaw from "../__fixtures__/aws/textract.json";
 import type { BuildContext } from "../arn";
 import { toSlimService } from "../catalog/transform";
@@ -12,6 +13,7 @@ import { baseSid, dedupeSids, pascal } from "./sid";
 const s3 = toSlimService(s3Raw);
 const ec2 = toSlimService(ec2Raw);
 const textract = toSlimService(textractRaw);
+const logs = toSlimService(logsRaw);
 const ctx: BuildContext = { partition: "aws" };
 
 function run(svc: SlimService, scope: Scope, access: AccessSelection) {
@@ -21,6 +23,17 @@ function run(svc: SlimService, scope: Scope, access: AccessSelection) {
 const acts = (actions: string[]): AccessSelection => ({ type: "actions", actions });
 const arns = (a: string[]): Scope => ({ type: "arns", arns: a });
 const ids = (r: { issues: { id: string }[] }) => r.issues.map((i) => i.id);
+
+describe("wildcard scope ARNs", () => {
+  it("scopes log stream actions to a wildcard log-group ARN", () => {
+    const arn = "arn:aws:logs:us-east-1:123456789012:log-group:/aws/lambda/fn:*";
+    const r = run(logs, arns([arn]), acts(["CreateLogStream", "PutLogEvents"]));
+    expect(r.statements).toHaveLength(1);
+    expect(r.statements[0]?.Action).toEqual(["logs:CreateLogStream", "logs:PutLogEvents"]);
+    expect(r.statements[0]?.Resource).toBe(arn);
+    expect(r.issues.map((i) => i.id)).not.toContain("I_ACTION_NOT_SCOPED");
+  });
+});
 
 describe("sid helpers", () => {
   it("pascal", () => {

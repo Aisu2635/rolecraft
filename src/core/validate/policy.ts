@@ -1,5 +1,6 @@
 import type { Catalog } from "../catalog/catalog";
-import { classifyArn } from "../arn";
+import { matchableTypes } from "../arn";
+import { globMatch } from "../glob";
 import type { Issue, SlimAction, SlimService, Statement } from "../types";
 import {
   isGlobalKey,
@@ -15,6 +16,7 @@ export { validateModelValues } from "./values";
 
 const ACTION_FORMAT = /^[a-z0-9-]+:[A-Za-z0-9*?]+$/;
 const MAX_LISTED = 5;
+const MAX_ACTION_LENGTH = 256;
 
 function err(id: string, message: string, path: string): Issue {
   return { id, severity: "error", message, path };
@@ -23,16 +25,6 @@ function err(id: string, message: string, path: string): Issue {
 function listed(items: string[]): string {
   const shown = items.slice(0, MAX_LISTED).join(", ");
   return items.length > MAX_LISTED ? `${shown} and ${items.length - MAX_LISTED} more` : shown;
-}
-
-function patternToRegExp(pattern: string): RegExp {
-  let src = "";
-  for (const ch of pattern) {
-    if (ch === "*") src += ".*";
-    else if (ch === "?") src += ".";
-    else src += ch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  }
-  return new RegExp(`^${src}$`);
 }
 
 interface MatchedAction {
@@ -78,8 +70,8 @@ function validateIdentityStatement(
       hasFullWildcard = true;
       return;
     }
-    if (!ACTION_FORMAT.test(action)) {
-      issues.push(err("V_ACTION_FORMAT", `"${action}" is not a valid action. Use lowercase service prefix and an action name, like s3:GetObject.`, path));
+    if (action.length > MAX_ACTION_LENGTH || !ACTION_FORMAT.test(action)) {
+      issues.push(err("V_ACTION_FORMAT", `"${action.slice(0, 64)}" is not a valid action. Use lowercase service prefix and an action name, like s3:GetObject.`, path));
       return;
     }
     const colon = action.indexOf(":");
@@ -90,8 +82,7 @@ function validateIdentityStatement(
       issues.push(err("V_UNKNOWN_SERVICE", `Unknown service "${key}" in "${action}".`, path));
       return;
     }
-    const re = patternToRegExp(name);
-    const hits = service.actions.filter((a) => re.test(a.name));
+    const hits = service.actions.filter((a) => globMatch(name, a.name));
     if (hits.length === 0) {
       issues.push(err("V_UNKNOWN_ACTION", `"${action}" matches no action in ${key}.`, path));
       return;
@@ -107,7 +98,7 @@ function validateIdentityStatement(
     for (const arn of arns) {
       for (const { service, action } of matched) {
         const compatible =
-          action.resources.length > 0 && classifyArn(arn, service).some((t) => action.resources.includes(t));
+          action.resources.length > 0 && matchableTypes(arn, service).some((t) => action.resources.includes(t));
         if (compatible) continue;
         badActions.add(`${service.key}:${action.name}`);
         badArns.add(arn);
