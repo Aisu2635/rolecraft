@@ -3,11 +3,11 @@ import { hasOnlyAllowedPolicyVariables } from "../../arn-syntax";
 import type { Grant } from "../../model/model";
 import type { ConditionBlock, Issue, Statement } from "../../types";
 import { pascal } from "../sid";
+import { KMS_KEY_RE } from "./kms-arn";
 import { prefixed, stmt, type Module, type ModulePreset } from "./types";
 
 const BUCKET_RE =
   /^(?!\d+\.\d+\.\d+\.\d+$)(?!.*\.\.)[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/;
-const KMS_KEY_RE = /^arn:aws:kms:[a-z0-9-]+:\d{12}:key\/[A-Za-z0-9-]+$/;
 
 function hasBadChar(s: string): boolean {
   for (const ch of s) {

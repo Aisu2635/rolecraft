@@ -3,9 +3,12 @@ import { ec2Module } from "./ec2";
 import { ecrModule } from "./ecr";
 import { eksModule } from "./eks";
 import { dynamodbModule } from "./dynamodb";
+import { kmsModule } from "./kms";
 import { lambdaModule } from "./lambda";
 import { logsModule } from "./logs";
 import { s3Module } from "./s3";
+import { secretsmanagerModule } from "./secretsmanager";
+import { sqsModule } from "./sqs";
 import { runModule, type Module } from "./types";
 
 /** Registered smart modules, keyed by module id. Later tasks add entries. */
@@ -17,6 +20,9 @@ export const MODULES: Record<string, Module> = {
   lambda: lambdaModule as Module,
   dynamodb: dynamodbModule as Module,
   logs: logsModule as Module,
+  secretsmanager: secretsmanagerModule as Module,
+  kms: kmsModule as Module,
+  sqs: sqsModule as Module,
 };
 
 export function defaultBuilders(): Record<string, GrantBuilder> {
