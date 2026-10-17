@@ -1,5 +1,6 @@
 import type { Catalog } from "../catalog/catalog";
 import { matchableTypes } from "../arn";
+import { isValidArnSyntax } from "../arn-syntax";
 import { globMatch } from "../glob";
 import type { Issue, SlimAction, SlimService, Statement } from "../types";
 import {
@@ -89,6 +90,14 @@ function validateIdentityStatement(
     }
     for (const a of hits) matched.push({ service, action: a });
   });
+
+  if (statement.Resource !== undefined) {
+    for (const r of toList(statement.Resource)) {
+      if (r !== "*" && !isValidArnSyntax(r)) {
+        issues.push(err("V_ARN_FORMAT", `"${r.slice(0, 64)}" is not a valid ARN.`, `${base}.Resource`));
+      }
+    }
+  }
 
   if (statement.Resource !== undefined && !hasFullWildcard) {
     const arns = toList(statement.Resource).filter((r) => r !== "*");

@@ -1,4 +1,5 @@
 import { matchableTypes, type BuildContext } from "../arn";
+import { isValidArnSyntax } from "../arn-syntax";
 import type { AccessSelection, Grant } from "../model/model";
 import type { Issue, SlimAction, SlimService, Statement } from "../types";
 import { baseSid } from "./sid";
@@ -113,6 +114,10 @@ export function buildGenericStatements(
   const classified = new Map<string, string[]>();
   for (const arn of arns) {
     if (arn === "*") continue;
+    if (!isValidArnSyntax(arn)) {
+      issue("E_BAD_ARN", "error", `"${arn.slice(0, 64)}" is not a valid ARN.`);
+      continue;
+    }
     const types = matchableTypes(arn, svc);
     if (types.length === 0) {
       issue(

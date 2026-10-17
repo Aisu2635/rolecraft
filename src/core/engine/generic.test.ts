@@ -250,3 +250,23 @@ describe("buildGenericStatements", () => {
     expect(go()).toStrictEqual(go());
   });
 });
+
+describe("E_BAD_ARN", () => {
+  it.each(["arn:aws:s3:::b\nc/*", 'arn:aws:s3:::b"c/x', "arn:aws:s3:::b c/x", "arn:aws:s3:::${foo}/x", "arn:aws:*", "arn:aws:s3:*"])(
+    "rejects %j without emitting it",
+    (arn) => {
+      const r = run(s3, arns([arn]), acts(["GetObject"]));
+      const bad = r.issues.find((i) => i.id === "E_BAD_ARN");
+      expect(bad?.severity).toBe("error");
+      expect(bad?.grantId).toBe("g1");
+      expect(JSON.stringify(r.statements)).not.toContain("${foo}");
+      expect(r.statements.flatMap((s) => [s.Resource].flat())).not.toContain(arn);
+    },
+  );
+  it("accepts a policy-variable ARN", () => {
+    const arn = "arn:aws:s3:::home/${aws:username}/*";
+    const r = run(s3, arns([arn]), acts(["GetObject"]));
+    expect(ids(r)).not.toContain("E_BAD_ARN");
+    expect(r.statements[0]?.Resource).toBe(arn);
+  });
+});

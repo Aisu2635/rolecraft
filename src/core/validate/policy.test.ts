@@ -180,8 +180,8 @@ describe("validateIdentityPolicy", () => {
     expect(ids(doc({ Effect: "Allow", Resource: "*" }))).toEqual(["V_SCHEMA"]);
     for (const bad of [null, undefined, 1, "x", [], { Statement: null }]) expect(() => validateIdentityPolicy(bad, catalog)).not.toThrow();
   });
-  it("treats an unparseable ARN as a mismatch", () => {
-    expect(ids(doc(allow("s3:GetObject", "not-an-arn")))).toEqual(["V_ACTION_RESOURCE_MISMATCH"]);
+  it("treats an unparseable ARN as a format error and a mismatch", () => {
+    expect(ids(doc(allow("s3:GetObject", "not-an-arn")))).toEqual(["V_ARN_FORMAT", "V_ACTION_RESOURCE_MISMATCH"]);
   });
 });
 
@@ -247,5 +247,24 @@ describe("validateTrustPolicy", () => {
     expect(trustIds({ Version: "2008-10-17", Statement: [] })).toEqual(["V_VERSION", "V_EMPTY_STATEMENTS"]);
     expect(trustIds(doc({ Action: "sts:AssumeRole" }))).toEqual(["V_SCHEMA"]);
     for (const bad of [null, 3, {}]) expect(() => validateTrustPolicy(bad)).not.toThrow();
+  });
+});
+
+describe("V_ARN_FORMAT", () => {
+  const BAD = [
+    "arn:aws:s3:::b\nc/*",
+    'arn:aws:s3:::b"c/x',
+    "arn:aws:s3:::b c/x",
+    "arn:aws:s3:::${foo}/x",
+    "arn:aws:*",
+    "arn:aws:s3:*",
+  ];
+  it.each(BAD)("rejects %j", (arn) => {
+    expect(ids(doc(allow("s3:GetObject", arn)))).toContain("V_ARN_FORMAT");
+    expect(ids(doc(allow("*", [arn])))).toContain("V_ARN_FORMAT");
+  });
+  it("accepts policy variables and star", () => {
+    expect(ids(doc(allow("s3:GetObject", "arn:aws:s3:::home/${aws:username}/*")))).not.toContain("V_ARN_FORMAT");
+    expect(ids(doc(allow("s3:GetObject", "*")))).not.toContain("V_ARN_FORMAT");
   });
 });
