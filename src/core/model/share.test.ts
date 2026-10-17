@@ -42,8 +42,40 @@ describe("share url", () => {
     const bad = { ...createEmptyModel(), extra: "x" };
     expect(decodeModel(compressToEncodedURIComponent(JSON.stringify(bad)))).toBeNull();
   });
-  it("rejects inputs over 100,000 characters", () => {
-    expect(decodeModel("A".repeat(100_001))).toBeNull();
+  it("rejects inputs over 8,192 characters", () => {
+    expect(decodeModel("A".repeat(8_193))).toBeNull();
+  });
+  it("rejects a valid model whose encoding exceeds 8,192 characters", () => {
+    let seed = 7;
+    const rnd = (): string => {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      return seed.toString(36);
+    };
+    const m = full();
+    m.managedPolicyArns = Array.from({ length: 400 }, () => rnd() + rnd() + rnd() + rnd());
+    const enc = encodeModel(m);
+    expect(enc.length).toBeGreaterThan(8_192);
+    expect(roleModelSchema.safeParse(m).success).toBe(true);
+    expect(decodeModel(enc)).toBeNull();
+  });
+  it("still round-trips a realistic 20-grant model within the limit", () => {
+    const m = createEmptyModel();
+    m.grants = Array.from({ length: 20 }, (_, i) => ({
+      id: `g_${String(i).padStart(8, "0")}`,
+      service: ["s3", "ec2", "iam", "sqs"][i % 4] as string,
+      scope: { type: "arns" as const, arns: [`arn:aws:s3:::bucket-${i}/*`] },
+      access: { type: "levels" as const, levels: ["Read" as const, "List" as const] },
+    }));
+    const enc = encodeModel(m);
+    expect(enc.length).toBeLessThan(8_192);
+    expect(decodeModel(enc)).toEqual(m);
+  });
+  it("rejects a small payload that decompresses past 262,144 characters, quickly", () => {
+    const enc = compressToEncodedURIComponent("a".repeat(300_000));
+    expect(enc.length).toBeLessThan(8_192);
+    const t = performance.now();
+    expect(decodeModel(enc)).toBeNull();
+    expect(performance.now() - t).toBeLessThan(200);
   });
   it("reads from the hash", () => {
     const m = full();
