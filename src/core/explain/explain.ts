@@ -2,6 +2,8 @@ import type { Catalog } from "../catalog/catalog";
 import { MODULES } from "../engine/modules/registry";
 import { resolveActions } from "../engine/generic";
 import type { Grant, RoleModel } from "../model/model";
+import { isDeletion } from "../destructive";
+import type { Module } from "../engine/modules/types";
 import { ACCESS_LEVELS, type SlimService } from "../types";
 
 const byText = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
@@ -11,25 +13,26 @@ function joinAnd(xs: string[]): string {
   return `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1] as string}`;
 }
 
-/** Names (without service prefix) of the actions a grant actually allows. */
-function grantedActionNames(grant: Grant, svc: SlimService): string[] {
-  const mod = grant.module !== undefined ? MODULES[grant.module] : undefined;
-  if (mod !== undefined) {
-    if (grant.access.type !== "preset") return [];
-    const access = grant.access;
-    const preset = mod.presets.find((p) => p.id === access.preset);
-    return preset ? [...preset.actions] : [];
-  }
-  return resolveActions(svc, grant.access).actions.map((a) => a.name);
+interface Contribution {
+  /** Action names (without service prefix) the grant actually allows. */
+  names: string[];
+  text?: string;
+}
+
+/** What a module grant produces: nothing unless it would really build output. */
+function moduleContribution(grant: Grant, mod: Module | undefined): Contribution {
+  const none: Contribution = { names: [] };
+  if (!mod || grant.service !== mod.service) return none;
+  const access = grant.access;
+  if (access.type !== "preset") return none;
+  const preset = mod.presets.find((p) => p.id === access.preset);
+  if (!preset || grant.scope.type !== "module") return none;
+  const parsed = mod.dataSchema.safeParse(grant.scope.data);
+  if (!parsed.success) return none;
+  return { names: [...preset.actions], text: mod.explain(grant, parsed.data) };
 }
 
 function sentence(grant: Grant, svc: SlimService): string | undefined {
-  const mod = grant.module !== undefined ? MODULES[grant.module] : undefined;
-  if (grant.module !== undefined) {
-    if (!mod || grant.scope.type !== "module") return undefined;
-    const parsed = mod.dataSchema.safeParse(grant.scope.data);
-    return parsed.success ? mod.explain(grant, parsed.data) : undefined;
-  }
   if (grant.scope.type === "module" || grant.access.type === "preset") return undefined;
   const { actions } = resolveActions(svc, grant.access);
   if (actions.length === 0) return undefined;
@@ -51,20 +54,29 @@ function sentence(grant: Grant, svc: SlimService): string | undefined {
 export function explain(
   model: RoleModel,
   catalog: Catalog,
-): { can: string[]; cannot: string[] } {
-  const can: string[] = [];
+): { can: { grantId: string; text: string }[]; cannot: string[] } {
+  const can: { grantId: string; text: string }[] = [];
   const services = new Map<string, { svc: SlimService; granted: Set<string> }>();
 
   for (const grant of model.grants) {
     try {
-      const mod = grant.module !== undefined ? MODULES[grant.module] : undefined;
-      const svc = catalog.getService(mod ? mod.service : grant.service);
+      const isModule = grant.module !== undefined;
+      const mod = isModule ? MODULES[grant.module as string] : undefined;
+      if (isModule && mod !== undefined && grant.service !== mod.service) continue;
+      const svc = catalog.getService(grant.service);
       if (!svc) continue;
-      const s = sentence(grant, svc);
+      let names: string[];
+      let text: string | undefined;
+      if (isModule) {
+        ({ names, text } = moduleContribution(grant, mod));
+      } else {
+        names = resolveActions(svc, grant.access).actions.map((a) => a.name);
+        text = sentence(grant, svc);
+      }
       const entry = services.get(svc.key) ?? { svc, granted: new Set<string>() };
-      for (const n of grantedActionNames(grant, svc)) entry.granted.add(`${svc.key}:${n}`);
+      for (const n of names) entry.granted.add(`${svc.key}:${n}`);
       services.set(svc.key, entry);
-      if (s !== undefined) can.push(s);
+      if (text !== undefined) can.push({ grantId: grant.id, text });
     } catch {
       continue;
     }
@@ -78,7 +90,7 @@ export function explain(
     if (!names.some((n) => levelOf.get(n) === "Permissions management")) {
       cannot.push(`Cannot change ${svc.name} permissions.`);
     }
-    if (!names.some((n) => /delet|purge/i.test(n.slice(svc.key.length + 1)))) {
+    if (!names.some((n) => isDeletion(n))) {
       cannot.push(`Cannot delete ${svc.name} resources.`);
     }
     if (svc.key === "ec2" && !granted.has("ec2:TerminateInstances")) {
