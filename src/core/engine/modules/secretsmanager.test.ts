@@ -76,6 +76,21 @@ describe("secretsmanager module", () => {
     }
   });
 
+  it("warns when the name looks pasted with the random suffix", () => {
+    const r = run("read", { secretName: "prod/db-AbC12x" });
+    expect(r.issues).toStrictEqual([
+      {
+        id: "W_SECRET_SUFFIX",
+        severity: "warning",
+        grantId: "g1",
+        message:
+          "If -AbC12x is the random suffix Secrets Manager added, remove it from the name — otherwise this policy never matches.",
+      },
+    ]);
+    expect(run("read", { secretName: "prod/db" }).issues).toStrictEqual([]);
+    expect(run("read", { secretName: "prod/db-abc" }).issues).toStrictEqual([]);
+  });
+
   it("explains", () => {
     expect(secretsmanagerModule.explain(grant("read", {}), { secretName: "prod/db" })).toBe(
       "Can read the value of the secret prod/db.",

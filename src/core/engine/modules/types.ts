@@ -55,6 +55,12 @@ export function runModule(
     statements: [],
     issues: [{ ...issue, severity: "error", grantId: grant.id }],
   });
+  if (grant.service !== mod.service) {
+    return fail({
+      id: "E_MODULE_SERVICE",
+      message: `${mod.label} can only be used for the ${mod.service} service, not "${grant.service}".`,
+    });
+  }
   const access = grant.access;
   if (access.type !== "preset" || !mod.presets.some((p) => p.id === access.preset)) {
     return fail({

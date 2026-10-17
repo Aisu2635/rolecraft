@@ -249,3 +249,16 @@ describe("matchableTypes", () => {
     expect(best).toBeLessThan(50);
   });
 });
+
+describe("classifyArn qualified resources", () => {
+  it("lambda alias/version ARN is not a function", () => {
+    const t = classifyArn("arn:aws:lambda:us-east-1:123456789012:function:f:prod", lambdaRaw as unknown as SlimService);
+    expect(t).not.toContain("function");
+    expect(t.length).toBeGreaterThan(0);
+  });
+  it("log-stream ARN classifies as log-stream only", () => {
+    expect(
+      classifyArn("arn:aws:logs:us-east-1:123456789012:log-group:a:log-stream:s", logs),
+    ).toStrictEqual(["log-stream"]);
+  });
+});

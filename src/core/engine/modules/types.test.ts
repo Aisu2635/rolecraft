@@ -119,3 +119,11 @@ describe("registry and helpers", () => {
     expect(loadRealCatalog(["s3"]).getService("s3")?.key).toBe("s3");
   });
 });
+
+describe("runModule service mismatch", () => {
+  it("rejects a grant whose service differs from the module", () => {
+    const r = runModule(mod, grant({ service: "s3" }), svc, ctx);
+    expect(r.statements).toEqual([]);
+    expect(r.issues[0]).toMatchObject({ id: "E_MODULE_SERVICE", severity: "error", grantId: "g1" });
+  });
+});

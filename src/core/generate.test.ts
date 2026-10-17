@@ -49,10 +49,13 @@ describe("generate", () => {
 
   it("duplicate Sids across grants are deduped", () => {
     const r = generate(
-      model([grant({ id: "a", service: "textract" }), grant({ id: "b", service: "textract" })]),
+      model([
+        grant({ id: "a", service: "textract", access: { type: "actions", actions: ["AnalyzeDocument"] } }),
+        grant({ id: "b", service: "textract", access: { type: "actions", actions: ["AnalyzeExpense"] } }),
+      ]),
       catalog,
     );
-    expect(r.policy?.Statement.map((s) => s.Sid)).toEqual(["TextractReadAll", "TextractReadAll2"]);
+    expect(r.policy?.Statement.map((s) => s.Sid)).toEqual(["TextractCustomAll", "TextractCustomAll2"]);
   });
 
   it("principal trust gives null trust and no error", () => {
@@ -262,5 +265,23 @@ describe("username warning dedupe", () => {
     );
     expect(ids(r.issues)).not.toContain("L_USERNAME_IN_ROLE");
     expect(ids(r.issues)).not.toContain("W_S3_USERNAME_VAR");
+  });
+});
+
+describe("generate statement dedupe", () => {
+  it("emits identical statements once, keeping the first", () => {
+    const ec2g = (id: string, preset: string): Grant => ({
+      id,
+      service: "ec2",
+      module: "ec2",
+      scope: { type: "module", data: { selector: { type: "all" } } },
+      access: { type: "preset", preset },
+    });
+    const r = generate(model([ec2g("a", "view"), ec2g("b", "start-stop")]), catalog);
+    const stmts = r.policy?.Statement ?? [];
+    const views = stmts.filter((s) => JSON.stringify(s.Action).includes("DescribeInstances"));
+    expect(views).toHaveLength(1);
+    expect(views[0]?.Sid).toBe("Ec2ViewView");
+    expect(stmts.map((s) => s.Sid)).toStrictEqual(["Ec2ViewView", "Ec2StartStopManage"]);
   });
 });

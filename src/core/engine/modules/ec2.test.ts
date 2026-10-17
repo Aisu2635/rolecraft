@@ -111,6 +111,7 @@ describe("ec2 module", () => {
       Condition: {
         StringEquals: { "aws:ResourceTag/Env": "dev" },
         "ForAllValues:StringNotEquals": { "aws:TagKeys": ["Env"] },
+        Null: { "aws:TagKeys": "false" },
       },
     });
     expect(r.issues).toStrictEqual([]);

@@ -38,6 +38,20 @@ function sortIssues(issues: Issue[]): Issue[] {
     .map((x) => x.issue);
 }
 
+const sortedStrs = (x: unknown): unknown => (Array.isArray(x) ? [...x].sort() : x);
+
+/** Drops statements identical to an earlier one (ignoring Sid); keeps the first. */
+function dedupeStatements(statements: Statement[]): Statement[] {
+  const seen = new Set<string>();
+  return statements.filter((s) => {
+    const { Sid: _sid, ...rest } = s;
+    const key = JSON.stringify({ ...rest, Action: sortedStrs(s.Action), Resource: sortedStrs(s.Resource) });
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 export function generate(
   model: RoleModel,
   catalog: Catalog,
@@ -119,7 +133,7 @@ export function generate(
       message: "No permissions yet. Add a service to generate a policy.",
     });
   } else {
-    policy = { Version: "2012-10-17", Statement: dedupeSids(statements) };
+    policy = { Version: "2012-10-17", Statement: dedupeSids(dedupeStatements(statements)) };
     issues.push(...validateIdentityPolicy(policy, catalog));
   }
 
