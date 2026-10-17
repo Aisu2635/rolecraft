@@ -121,7 +121,7 @@ export function generate(
     issues.push(...validateIdentityPolicy(policy, catalog));
   }
 
-  let trust: PolicyDocument | null = null;
+  let trust: PolicyDocument | null;
   try {
     const t = buildTrust(model.trust, ctx);
     issues.push(...t.issues);
