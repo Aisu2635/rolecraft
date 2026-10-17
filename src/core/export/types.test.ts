@@ -17,6 +17,26 @@ describe("quoting helpers", () => {
     expect(hclString("x%{y}")).toBe('"x%%{y}"');
     expect(hclString('a"b')).toBe('"a\\"b"');
   });
+  it("psQuote doubles every Unicode single quote", () => {
+    for (const q of ["‘", "’", "‚", "‛"]) {
+      expect(psQuote(`a${q}b`)).toBe(`'a${q}${q}b'`);
+    }
+    expect(psQuote("a’b")).toBe("'a’’b'");
+  });
+  it("psQuote keeps an injection-shaped input a single literal", () => {
+    expect(psQuote("x’; calc; ‘")).toBe("'x’’; calc; ‘‘'");
+  });
+  it("shQuote edge cases", () => {
+    expect(shQuote("")).toBe("''");
+    expect(shQuote("a\nb`c`")).toBe("'a\nb`c`'");
+  });
+  it("hclString does not double-escape an already escaped sequence", () => {
+    expect(hclString("$${x}")).toBe('"$$${x}"');
+  });
+  it("tfLabel edge cases", () => {
+    expect(tfLabel("")).toBe("r");
+    expect(tfLabel("roleCraftRole")).toBe("rolecraftrole");
+  });
   it("tfLabel", () => {
     expect(tfLabel("Rolecraft-Role.1")).toBe("rolecraft_role_1");
     expect(tfLabel("1x")).toBe("r_1x");

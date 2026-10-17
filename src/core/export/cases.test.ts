@@ -11,11 +11,15 @@ describe("REFERENCE_CASES", () => {
       ["cross-account", "ec2-ssm", "eks-kubectl", "github-deploy", "lambda-api", "s3-group"],
     );
   });
+  it("s3-group has no trust policy (group principal)", () => {
+    expect(REFERENCE_CASES["s3-group"]?.().result.trust).toBeNull();
+  });
   for (const [id, build] of Object.entries(REFERENCE_CASES)) {
     it(`${id}: no errors, valid policy, summary present`, () => {
       const { result, summary, model } = build();
       expect(result.issues.filter((i) => i.severity === "error")).toStrictEqual([]);
-      if (result.policy) expect(validateIdentityPolicy(result.policy, catalog)).toStrictEqual([]);
+      expect(result.policy).not.toBeNull();
+      expect(validateIdentityPolicy(result.policy as NonNullable<typeof result.policy>, catalog)).toStrictEqual([]);
       // group/user principal trust has no trust policy
       if (model.trust.kind !== "principal") expect(result.trust).not.toBeNull();
       expect(summary.can.length).toBeGreaterThan(0);
