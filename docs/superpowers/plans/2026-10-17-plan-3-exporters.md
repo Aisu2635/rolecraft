@@ -58,7 +58,7 @@ scripts/check_cli.py              validates aws commands against botocore models
 - Consumes: `generate`, `GenerateResult`, `hasErrors`, `explain` (Plan 2), `RoleModel`, `stringifyPolicy`, `ExportFile`.
 - Produces:
   ```ts
-  export interface ExportInput { model: RoleModel; result: GenerateResult; summary: { can: string[]; cannot: string[] } }
+  export interface ExportInput { model: RoleModel; result: GenerateResult; summary: { can: { grantId: string; text: string }[]; cannot: string[] } } // = explain() output
   export type ExportOutcome = { ok: true; files: ExportFile[] } | { ok: false; reason: string };
   export function exportable(result: GenerateResult): boolean;             // !hasErrors(result.issues) && (result.policy !== null || model has managedPolicyArns)
   export function shQuote(s: string): string;   // POSIX single-quote: wrap in '…', each ' → '\''
@@ -87,7 +87,7 @@ scripts/check_cli.py              validates aws commands against botocore models
 5. Managed mode: `POLICY_ARN=$(aws iam create-policy --policy-name "${ROLE_NAME}-policy" --policy-document file://policy.json --query Policy.Arn --output text)` then `aws iam attach-role-policy --role-name "$ROLE_NAME" --policy-arn "$POLICY_ARN"`. Inline mode: `aws iam put-role-policy --role-name "$ROLE_NAME" --policy-name "${ROLE_NAME}-inline" --policy-document file://policy.json`.
 6. Each `managedPolicyArns` entry: `aws iam attach-role-policy --role-name "$ROLE_NAME" --policy-arn <shQuote>`.
 7. EC2 trust: `aws iam create-instance-profile --instance-profile-name "$ROLE_NAME"` and `aws iam add-role-to-instance-profile --instance-profile-name "$ROLE_NAME" --role-name "$ROLE_NAME"`.
-8. EKS kubectl grants: `ROLE_ARN=$(aws iam get-role --role-name "$ROLE_NAME" --query Role.Arn --output text)`, then per cluster `aws eks create-access-entry --cluster-name <q> --principal-arn "$ROLE_ARN"` and `aws eks associate-access-policy --cluster-name <q> --principal-arn "$ROLE_ARN" --policy-arn arn:aws:eks::aws:cluster-access-policy/AmazonEKSViewPolicy --access-scope type=cluster` with a comment line `# Change AmazonEKSViewPolicy to AmazonEKSEditPolicy or AmazonEKSClusterAdminPolicy if this role needs more.` (region from model.region via `--region` when set).
+8. EKS kubectl grants (role trust kinds only — EKS access entries can't target IAM groups; for principal/group trust emit a comment explaining the cluster admin must add the user/role mapping instead): `ROLE_ARN=$(aws iam get-role --role-name "$ROLE_NAME" --query Role.Arn --output text)`, then per cluster `aws eks create-access-entry --cluster-name <q> --principal-arn "$ROLE_ARN"` and `aws eks associate-access-policy --cluster-name <q> --principal-arn "$ROLE_ARN" --policy-arn arn:aws:eks::aws:cluster-access-policy/AmazonEKSViewPolicy --access-scope type=cluster` with a comment line `# Change AmazonEKSViewPolicy to AmazonEKSEditPolicy or AmazonEKSClusterAdminPolicy if this role needs more.` (region from model.region via `--region` when set).
 9. Principal trust (group/user): no trust/role steps; `create-policy` then `attach-group-policy --group-name` / `attach-user-policy --user-name`.
 10. Final `echo` lines summarizing what was created.
 
@@ -148,7 +148,7 @@ scripts/check_cli.py              validates aws commands against botocore models
 **Files:** Create `readme.ts`, `zip.ts`, `index.ts` + tests; `npm i fflate`.
 
 **Interfaces:**
-- `exportReadme(input: ExportInput): ExportFile` → `README.md`: title `# <role name>`, "## What this role can do" (`summary.can` bullets), "## What it cannot do" (`summary.cannot`), "## Warnings" (warning issues' messages, omitted if none), "## How to apply" with one subsection per format (bash, PowerShell, Terraform `terraform init && terraform apply`, CloudFormation deploy command), and the note "These scripts create resources once; re-running fails with EntityAlreadyExists. Delete the role first or use Terraform/CloudFormation for repeatable deploys."
+- `exportReadme(input: ExportInput): ExportFile` → `README.md`: title `# <role name>`, "## What this role can do" (`summary.can[].text` bullets), "## What it cannot do" (`summary.cannot`), "## Warnings" (warning issues' messages, omitted if none), "## How to apply" with one subsection per format (bash, PowerShell, Terraform `terraform init && terraform apply`, CloudFormation deploy command), and the note "These scripts create resources once; re-running fails with EntityAlreadyExists. Delete the role first or use Terraform/CloudFormation for repeatable deploys."
 - `exportAll(input: ExportInput): ExportOutcome` — if `!exportable(input.result)` → `{ ok:false, reason: "Fix the errors before exporting." }`; else files in this order: `policy.json`, `trust.json` (if any), bash, PowerShell, `main.tf`, `template.yaml`, `README.md`.
 - `exportZip(files: ExportFile[]): Uint8Array` — `fflate.zipSync` with fixed mtime `new Date("2020-01-01T00:00:00Z")` (deterministic bytes).
 
