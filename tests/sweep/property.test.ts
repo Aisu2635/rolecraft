@@ -151,3 +151,58 @@ describe("property: random role models", () => {
     expect(decodeModel(encodeModel(m))).toStrictEqual(m);
   });
 });
+
+describe("property: wildcarded sample ARNs", () => {
+  const mutated = fc
+    .constantFrom(...services.filter((s) => arnsOf(s).length > 0))
+    .chain((svc) =>
+      fc
+        .record({
+          picks: fc.subarray(arnsOf(svc), { minLength: 1 }),
+          mode: fc.array(fc.constantFrom("star", "question", "both"), { minLength: 8, maxLength: 8 }),
+          pos: fc.array(fc.nat(10_000), { minLength: 8, maxLength: 8 }),
+          levels: fc.subarray([...ACCESS_LEVELS], { minLength: 1 }),
+        })
+        .map(({ picks, mode, pos, levels }) => {
+          const arns = picks.map((arn, i) => {
+            let out = arn;
+            const m = mode[i % 8];
+            if (m === "star" || m === "both") {
+              const cut = Math.max(out.lastIndexOf("/"), out.lastIndexOf(":"));
+              out = out.slice(0, cut + 1) + "*";
+            }
+            if (m === "question" || m === "both") {
+              const at = (pos[i % 8] as number) % (out.length + 1);
+              out = out.slice(0, at) + "?" + out.slice(at);
+            }
+            return out;
+          });
+          return { svc, arns, levels };
+        }),
+    );
+
+  test("generate output passes the strict validator with zero errors", () => {
+    fc.assert(
+      fc.property(mutated, ({ svc, arns, levels }) => {
+        const m: RoleModel = {
+          version: 1,
+          name: "wild-role",
+          partition: "aws",
+          accountId: "123456789012",
+          region: "us-east-1",
+          trust: { kind: "service", service: "ec2" },
+          grants: [
+            { id: "g1", service: svc.key, scope: { type: "arns", arns }, access: { type: "levels", levels } },
+          ],
+          policyMode: "inline",
+          managedPolicyArns: [],
+        };
+        const { policy } = generate(m, catalog);
+        if (!policy) return;
+        const errors = validateIdentityPolicy(policy, catalog).filter((i) => i.severity === "error");
+        expect(errors).toStrictEqual([]);
+      }),
+      { numRuns: NUM_RUNS },
+    );
+  });
+});

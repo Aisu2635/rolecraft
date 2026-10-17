@@ -74,6 +74,17 @@ function run(svc: SlimService, level: AccessLevel, scopeKind: ScopeKind): void {
   expect(bad).toStrictEqual([]);
   if (scopeKind === "all") expect(r.policy).not.toBeNull();
   expect(missingActions(svc, level, r)).toStrictEqual([]);
+  if (scopeKind === "arns") expect(unjustifiedDrops(svc, r)).toStrictEqual([]);
+}
+
+/** Dropped actions are only legitimate when sampleArns could not have covered them (no ARN-formatted resource type). */
+function unjustifiedDrops(svc: SlimService, r: GenerateResult): string[] {
+  const withFormat = new Set(svc.resources.filter((t) => t.arnFormats.length > 0).map((t) => t.name));
+  const byName = new Map(svc.actions.map((a) => [`${svc.key}:${a.name}`, a]));
+  return [...droppedActions(r.issues)].filter((name) => {
+    const a = byName.get(name);
+    return !a || a.resources.some((t) => withFormat.has(t));
+  });
 }
 
 const cases = services.map((svc) => {
@@ -123,6 +134,24 @@ describe("sweep guards", () => {
     const dropped = droppedActions(issues);
     expect(dropped.has("s3:GetObjectAcl")).toBe(true);
     expect(dropped.has("s3:GetObject")).toBe(false);
+  });
+
+  test("a drop of an action with a sampleable resource type is flagged", () => {
+    const svc = services.find((s) => s.key === "s3") as SlimService;
+    const withType = svc.actions.find((a) => a.resources.length > 0) as SlimService["actions"][number];
+    const r = {
+      policy: null,
+      trust: null,
+      issues: [
+        {
+          id: "I_ACTION_NOT_SCOPED",
+          severity: "info" as const,
+          message: `s3:${withType.name} was left out because none of the ARNs match the resource types it needs: x.`,
+        },
+      ],
+      sizes: { policy: 0, trust: 0 },
+    };
+    expect(unjustifiedDrops(svc, r)).toStrictEqual([`s3:${withType.name}`]);
   });
 
   test("coverage check runs even when the policy is null", () => {
