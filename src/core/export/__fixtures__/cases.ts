@@ -82,4 +82,11 @@ export const REFERENCE_CASES: Record<string, () => ExportInput> = {
       trust: { kind: "service", service: "ec2" },
       grants: [moduleGrant("g1", "eks", "kubectl", { cluster: "prod" })],
     }),
+  "eks-user": () =>
+    build({
+      name: "deploy-bot-kubectl",
+      region: "eu-west-1",
+      trust: { kind: "principal", target: "user", name: "deploy-bot" },
+      grants: [moduleGrant("g1", "eks", "kubectl", { cluster: "prod" })],
+    }),
 };

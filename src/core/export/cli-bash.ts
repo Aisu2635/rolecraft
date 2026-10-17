@@ -1,4 +1,4 @@
-import type { Grant } from "../model/model";
+import { EKS_COMMENTS, EKS_GROUP_COMMENT, EKS_VIEW_POLICY, eksClusters } from "./eks";
 import { stringifyPolicy, type ExportFile } from "./json";
 import { shQuote, type ExportInput } from "./types";
 
@@ -12,31 +12,11 @@ function heredoc(file: string, body: string): string[] {
   return [`cat > ${file} <<'${EOF_MARK}'`, body.replace(/\n$/, ""), EOF_MARK];
 }
 
-export function eksClusters(grants: Grant[]): string[] {
-  const out: string[] = [];
-  for (const g of grants) {
-    if (g.module !== "eks" || g.service !== "eks" || g.access.type !== "preset") continue;
-    if (g.access.preset !== "kubectl" || g.scope.type !== "module") continue;
-    const data = g.scope.data as { cluster?: unknown } | null;
-    const cluster = data && typeof data === "object" ? data.cluster : undefined;
-    if (typeof cluster === "string" && cluster !== "" && !out.includes(cluster)) out.push(cluster);
-  }
-  return out;
-}
-
-function eksComments(): string[] {
-  return [
-    "# Give kubectl access to your EKS cluster(s) through EKS access entries.",
-    "# The cluster's authentication mode must be API or API_AND_CONFIG_MAP for access entries.",
-    "# Change AmazonEKSViewPolicy to AmazonEKSEditPolicy or AmazonEKSClusterAdminPolicy if more access is needed.",
-  ];
-}
-
 function eksSteps(clusters: string[], arnVar: string, regionName: string | undefined): string[] {
   const region = regionName ? ` --region ${shQuote(regionName)}` : "";
   return clusters.flatMap((c) => [
     `aws eks create-access-entry --cluster-name ${shQuote(c)} --principal-arn "$${arnVar}"${region} >/dev/null`,
-    `aws eks associate-access-policy --cluster-name ${shQuote(c)} --principal-arn "$${arnVar}" --policy-arn arn:aws:eks::aws:cluster-access-policy/AmazonEKSViewPolicy --access-scope type=cluster${region} >/dev/null`,
+    `aws eks associate-access-policy --cluster-name ${shQuote(c)} --principal-arn "$${arnVar}" --policy-arn ${EKS_VIEW_POLICY} --access-scope type=cluster${region} >/dev/null`,
   ]);
 }
 
@@ -78,16 +58,12 @@ export function exportCliBash(input: ExportInput): ExportFile {
       if (kind === "user") {
         add(
           "",
-          ...eksComments(),
-          "ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)",
-          `PRINCIPAL_ARN="arn:aws:iam::\${ACCOUNT_ID}:user/"${shQuote(trust.name)}`,
+          ...EKS_COMMENTS,
+          'PRINCIPAL_ARN=$(aws iam get-user --user-name "$PRINCIPAL_NAME" --query User.Arn --output text)',
           ...eksSteps(clusters, "PRINCIPAL_ARN", model.region),
         );
       } else {
-        add(
-          "",
-          "# kubectl access: EKS access entries can't target IAM groups. Ask the cluster admin to add an access entry for each user, or use a role instead.",
-        );
+        add("", EKS_GROUP_COMMENT);
       }
     }
     add("", `echo "Attached the policy to ${kind} $PRINCIPAL_NAME."`);
@@ -145,7 +121,7 @@ export function exportCliBash(input: ExportInput): ExportFile {
   if (clusters.length > 0) {
     add(
       "",
-      ...eksComments(),
+      ...EKS_COMMENTS,
       'aws iam wait role-exists --role-name "$ROLE_NAME"',
       'ROLE_ARN=$(aws iam get-role --role-name "$ROLE_NAME" --query Role.Arn --output text)',
       ...eksSteps(clusters, "ROLE_ARN", model.region),

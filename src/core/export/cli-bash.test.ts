@@ -10,7 +10,7 @@ const make = (n: string): ExportInput => (REFERENCE_CASES[n] as () => ExportInpu
 describe("exportCliBash", () => {
   it.each(names)("snapshot: %s", async (n) => {
     const f = exportCliBash(make(n));
-    const file = n === "s3-group" ? "attach-policy.sh" : "create-role.sh";
+    const file = make(n).model.trust.kind === "principal" ? "attach-policy.sh" : "create-role.sh";
     expect(f.filename).toBe(file);
     expect(f.language).toBe("bash");
     await expect(f.content).toMatchFileSnapshot(`./__snapshots__/${n}/${file}`);
@@ -149,7 +149,7 @@ describe("exportCliBash", () => {
       expect(line?.endsWith(" >/dev/null")).toBe(true);
     }
   });
-  it("eks for principal user uses the caller account and a quoted user ARN", () => {
+  it("eks for principal user looks up the user's ARN", () => {
     const input = make("s3-group");
     const model = {
       ...input.model,
@@ -166,8 +166,12 @@ describe("exportCliBash", () => {
       ],
     };
     const c = exportCliBash({ ...input, model }).content;
-    expect(c).toContain("ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)");
-    expect(c).toContain(String.raw`PRINCIPAL_ARN="arn:aws:iam::${"$"}{ACCOUNT_ID}:user/"'o'\''brien'`);
+    expect(c).toContain(String.raw`PRINCIPAL_NAME='o'\''brien'`);
+    expect(c).toContain(
+      'PRINCIPAL_ARN=$(aws iam get-user --user-name "$PRINCIPAL_NAME" --query User.Arn --output text)\n',
+    );
+    expect(c).not.toContain("get-caller-identity");
+    expect(c).not.toContain(":user/");
     expect(c).toContain(
       `aws eks create-access-entry --cluster-name 'prod' --principal-arn "$PRINCIPAL_ARN" --region 'eu-west-1' >/dev/null`,
     );

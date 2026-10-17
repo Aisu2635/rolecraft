@@ -24,6 +24,9 @@ describe("exportTerraform", () => {
     expect(c).not.toContain("\r");
     expect(c.endsWith("\n") && !c.endsWith("\n\n")).toBe(true);
     expect(c).toContain('source  = "hashicorp/aws"');
+    expect(c).toContain('version = ">= 5.81, < 7.0"');
+    expect(c.match(/^provider "aws" \{$/gm)).toHaveLength(1);
+    expect(c.indexOf('provider "aws"')).toBeGreaterThan(c.indexOf("terraform {"));
     const expected: string[] = [];
     if (input.result.trust && input.model.trust.kind !== "principal") expected.push(stringifyPolicy(input.result.trust));
     if (input.result.policy) expected.push(stringifyPolicy(input.result.policy));
@@ -75,9 +78,42 @@ describe("exportTerraform", () => {
     expect(lam).not.toContain("instance_profile");
   });
 
+  it("provider: model region", () => {
+    const input = make("lambda-api");
+    const c = exportTerraform({ ...input, model: { ...input.model, region: "eu-west-1" } }).content;
+    expect(c).toContain('}\n\nprovider "aws" {\n  region = "eu-west-1"\n}\n');
+    expect(c).not.toContain("variable");
+    expect(c).not.toContain("IAM is global");
+    const evil = exportTerraform({ ...input, model: { ...input.model, region: "x${y}" } }).content;
+    expect(evil).toContain('  region = "x$${y}"\n');
+  });
+
+  it("provider: no region and EKS clusters asks for the region", () => {
+    const c = exportTerraform(make("eks-kubectl")).content;
+    expect(c).toContain(
+      '}\n\nvariable "region" {\n  description = "AWS region of your EKS cluster(s)"\n  type        = string\n}\n\nprovider "aws" {\n  region = var.region\n}\n',
+    );
+    expect(c).not.toContain("IAM is global");
+  });
+
+  it("provider: no region and no EKS uses us-east-1 with a note", () => {
+    const c = exportTerraform(make("lambda-api")).content;
+    expect(c).toContain(
+      '}\n\n# IAM is global; this region only selects the API endpoint Terraform calls.\nprovider "aws" {\n  region = "us-east-1"\n}\n',
+    );
+    expect(c).not.toContain("variable");
+  });
+
+  it("provider: principal user with EKS and a region", () => {
+    const c = exportTerraform(make("eks-user")).content;
+    expect(c).toContain('provider "aws" {\n  region = "eu-west-1"\n}\n');
+    expect(c).not.toContain("variable");
+  });
+
   it("github has a commented OIDC provider block", () => {
     const c = exportTerraform(make("github-deploy")).content;
     expect(c).toContain("# Uncomment if your account doesn't have the GitHub OIDC provider yet.");
+    expect(c).toContain("depends_on = [aws_iam_openid_connect_provider.github]");
     expect(c).toContain('# resource "aws_iam_openid_connect_provider" "github" {');
     expect(c).not.toMatch(/^resource "aws_iam_openid_connect_provider"/m);
   });
@@ -104,7 +140,7 @@ describe("exportTerraform", () => {
     },
   ];
 
-  it("principal user: policy/attachments and eks access entry via caller identity", () => {
+  it("principal user: policy/attachments and eks access entry via the user's ARN", () => {
     const input = make("s3-group");
     const model = {
       ...input.model,
@@ -116,8 +152,10 @@ describe("exportTerraform", () => {
     expect(c).toContain('resource "aws_iam_user_policy_attachment" "analytics_reader_policy"');
     expect(c).toContain('resource "aws_iam_user_policy_attachment" "analytics_reader_managed_1"');
     expect(c).toContain('user       = "bob"');
-    expect(c).toContain('data "aws_caller_identity" "current" {}');
-    expect(c).toContain('principal_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:user/bob"');
+    expect(c).toContain('data "aws_iam_user" "bob" {\n  user_name = "bob"\n}');
+    expect(c).toContain("principal_arn = data.aws_iam_user.bob.arn");
+    expect(c).not.toContain("aws_caller_identity");
+    expect(c).not.toContain(":user/");
     expect(c).toContain('output "policy_arn"');
     expect(c).not.toContain("aws_iam_role");
     const inline = exportTerraform({ ...input, model: { ...model, policyMode: "inline" } }).content;
@@ -132,7 +170,9 @@ describe("exportTerraform", () => {
       trust: { kind: "principal" as const, target: "user" as const, name: "b${x}" },
       grants: eksGrant(),
     };
-    expect(exportTerraform({ ...input, model }).content).toContain(':user/b$${x}"');
+    const c = exportTerraform({ ...input, model }).content;
+    expect(c).toContain('data "aws_iam_user" "b__x_" {\n  user_name = "b$${x}"\n}');
+    expect(c).toContain("principal_arn = data.aws_iam_user.b__x_.arn");
   });
 
   it("s3-group attaches to the group", () => {
@@ -155,6 +195,8 @@ describe("exportTerraform", () => {
       "# kubectl access: EKS access entries can't target IAM groups. Ask the cluster admin to add an access entry for each user, or use a role instead.",
     );
     expect(c).not.toContain("aws_eks");
+    expect(c).toContain('region = "us-east-1"');
+    expect(c).not.toContain("var.region");
   });
 
   it("managed ARNs only (no policy)", () => {

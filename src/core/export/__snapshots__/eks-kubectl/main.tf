@@ -5,9 +5,18 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = ">= 5.0"
+      version = ">= 5.81, < 7.0"
     }
   }
+}
+
+variable "region" {
+  description = "AWS region of your EKS cluster(s)"
+  type        = string
+}
+
+provider "aws" {
+  region = var.region
 }
 
 resource "aws_iam_role" "eks_admin_cli" {

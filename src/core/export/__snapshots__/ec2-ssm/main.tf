@@ -5,9 +5,14 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = ">= 5.0"
+      version = ">= 5.81, < 7.0"
     }
   }
+}
+
+# IAM is global; this region only selects the API endpoint Terraform calls.
+provider "aws" {
+  region = "us-east-1"
 }
 
 resource "aws_iam_role" "ec2_ops" {

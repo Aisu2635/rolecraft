@@ -17,7 +17,7 @@ const eksGrant = (cluster: unknown) => ({
 describe("exportCliPowerShell", () => {
   it.each(names)("snapshot: %s", async (n) => {
     const f = exportCliPowerShell(make(n));
-    const file = n === "s3-group" ? "attach-policy.ps1" : "create-role.ps1";
+    const file = make(n).model.trust.kind === "principal" ? "attach-policy.ps1" : "create-role.ps1";
     expect(f.filename).toBe(file);
     expect(f.language).toBe("powershell");
     await expect(f.content).toMatchFileSnapshot(`./__snapshots__/${n}/${file}`);
@@ -183,7 +183,7 @@ describe("exportCliPowerShell", () => {
       expect(line?.endsWith(" | Out-Null")).toBe(true);
     }
   });
-  it("eks for principal user uses the caller account and a concatenated quoted user ARN", () => {
+  it("eks for principal user looks up the user's ARN", () => {
     const input = make("s3-group");
     const model = {
       ...input.model,
@@ -192,8 +192,12 @@ describe("exportCliPowerShell", () => {
       grants: [eksGrant("prod")],
     };
     const c = exportCliPowerShell({ ...input, model }).content;
-    expect(c).toContain("$AccountId = aws sts get-caller-identity --query Account --output text --no-cli-pager\n");
-    expect(c).toContain(String.raw`$PrincipalArn = "arn:aws:iam::${"$"}{AccountId}:user/" + 'o''brien'`);
+    expect(c).toContain("$PrincipalName = 'o''brien'\n");
+    expect(c).toContain(
+      '$PrincipalArn = aws iam get-user --user-name $PrincipalName --query User.Arn --output text --no-cli-pager\nif ($LASTEXITCODE -ne 0) { throw "aws failed: get-user" }\n',
+    );
+    expect(c).not.toContain("get-caller-identity");
+    expect(c).not.toContain(":user/");
     expect(c).toContain(
       `aws eks create-access-entry --cluster-name 'prod' --principal-arn "$PrincipalArn" --region 'eu-west-1' --no-cli-pager | Out-Null`,
     );

@@ -30,6 +30,11 @@ describe("quoting helpers", () => {
     expect(shQuote("")).toBe("''");
     expect(shQuote("a\nb`c`")).toBe("'a\nb`c`'");
   });
+  it("hclString maps \\b and \\f (not HCL escapes) to \\u escapes", () => {
+    expect(hclString("a\bb\fc")).toBe(String.raw`"a\u0008b\u000cc"`);
+    expect(hclString(String.raw`x\b\f`)).toBe(String.raw`"x\\b\\f"`);
+    expect(hclString("\\\b")).toBe(String.raw`"\\\u0008"`);
+  });
   it("hclString does not double-escape an already escaped sequence", () => {
     expect(hclString("$${x}")).toBe('"$$${x}"');
   });

@@ -5,12 +5,18 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = ">= 5.0"
+      version = ">= 5.81, < 7.0"
     }
   }
 }
 
+# IAM is global; this region only selects the API endpoint Terraform calls.
+provider "aws" {
+  region = "us-east-1"
+}
+
 # Uncomment if your account doesn't have the GitHub OIDC provider yet.
+# Then also add depends_on = [aws_iam_openid_connect_provider.github] to aws_iam_role.github_deploy.
 # resource "aws_iam_openid_connect_provider" "github" {
 #   url            = "https://token.actions.githubusercontent.com"
 #   client_id_list = ["sts.amazonaws.com"]
