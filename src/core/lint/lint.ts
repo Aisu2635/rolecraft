@@ -110,7 +110,7 @@ function lintStatement(s: Statement, index: number, catalog: Catalog): Issue[] {
       else {
         for (const a of r) {
           const bare = a.name.slice(a.name.indexOf(":") + 1);
-          if (a.level === "Permissions management" || /^(delete|terminate)/i.test(bare)) names.push(a.name);
+          if (a.level === "Permissions management" || /delet|purge/i.test(bare) || /^terminate/i.test(bare)) names.push(a.name);
         }
       }
     }

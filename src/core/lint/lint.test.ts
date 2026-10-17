@@ -63,6 +63,11 @@ describe("L_DESTRUCTIVE_STAR", () => {
     expect(i?.message).toContain("ec2:TerminateInstances");
     expect(i?.message).not.toContain("DescribeVpcs");
   });
+  it("flags ScheduleKeyDeletion and PurgeQueue on *", () => {
+    expect(ids(run(doc(allow("kms:ScheduleKeyDeletion", "*"))))).toContain("L_DESTRUCTIVE_STAR");
+    expect(ids(run(doc(allow("sqs:PurgeQueue", "*"))))).toContain("L_DESTRUCTIVE_STAR");
+    expect(ids(run(doc(allow("s3:GetObject", "*"))))).not.toContain("L_DESTRUCTIVE_STAR");
+  });
   it("flags permissions-management level via catalog", () => {
     const i = run(doc(allow("iam:AttachRolePolicy", "*"))).find((x) => x.id === "L_DESTRUCTIVE_STAR");
     expect(i?.message).toContain("iam:AttachRolePolicy");

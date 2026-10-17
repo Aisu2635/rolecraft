@@ -5,7 +5,7 @@ import { createEmptyModel, type Grant, type RoleModel } from "../model/model";
 import type { SlimService } from "../types";
 import { explain } from "./explain";
 
-const catalog = loadRealCatalog(["s3", "ec2", "textract", "iam"]);
+const catalog = loadRealCatalog(["s3", "ec2", "textract", "iam", "kms", "sqs"]);
 const model = (grants: Grant[]): RoleModel => ({ ...createEmptyModel(), grants });
 const s3Grant = (preset: string, data: unknown = { bucket: "data-lake", prefixes: ["reports/"] }): Grant => ({
   id: "g1",
@@ -23,7 +23,7 @@ describe("explain", () => {
   it("s3 list-read module", () => {
     const r = explain(model([s3Grant("list-read")]), catalog);
     expect(r.can).toHaveLength(1);
-    expect(r.can[0]).toMatch(/^Can /);
+    expect(r.can).toStrictEqual(["Can list and download files in reports/ of data-lake."]);
     expect(r.cannot).toStrictEqual([
       "Cannot change Amazon S3 permissions.",
       "Cannot delete Amazon S3 resources.",
@@ -147,5 +147,23 @@ describe("explain cannot for odd module grants", () => {
       "Cannot change Amazon S3 permissions.",
       "Cannot delete Amazon S3 resources.",
     ]);
+  });
+});
+
+describe("explain deletion detection", () => {
+  const gen = (service: string, actions: string[]): Grant => ({
+    id: service,
+    service,
+    scope: { type: "all" },
+    access: { type: "actions", actions },
+  });
+  it("ScheduleKeyDeletion counts as deletion", () => {
+    const r = explain(model([gen("kms", ["ScheduleKeyDeletion"])]), catalog);
+    expect(r.cannot.join("|")).not.toMatch(/delete AWS Key Management Service|delete AWS KMS/);
+    expect(r.cannot.some((c) => c.includes("delete"))).toBe(false);
+  });
+  it("PurgeQueue counts as deletion", () => {
+    const r = explain(model([gen("sqs", ["PurgeQueue"])]), catalog);
+    expect(r.cannot.some((c) => c.includes("delete"))).toBe(false);
   });
 });

@@ -78,7 +78,7 @@ export function explain(
     if (!names.some((n) => levelOf.get(n) === "Permissions management")) {
       cannot.push(`Cannot change ${svc.name} permissions.`);
     }
-    if (!names.some((n) => n.slice(svc.key.length + 1).startsWith("Delete"))) {
+    if (!names.some((n) => /delet|purge/i.test(n.slice(svc.key.length + 1)))) {
       cannot.push(`Cannot delete ${svc.name} resources.`);
     }
     if (svc.key === "ec2" && !granted.has("ec2:TerminateInstances")) {
