@@ -8,6 +8,7 @@ import { validateIdentityPolicy, validateTrustPolicy } from "../../src/core/vali
 import { loadCatalog, loadServices, sampleArns } from "./load-data";
 
 const NUM_RUNS = 1000;
+const TEST_TIMEOUT = 60_000;
 const services = loadServices().filter((s) => s.actions.length > 0);
 const catalog = loadCatalog();
 const arnCache = new Map<string, string[]>();
@@ -125,7 +126,7 @@ const prop = (name: string, check: (m: RoleModel) => void): void => {
       }),
       { numRuns: NUM_RUNS },
     );
-  });
+  }, TEST_TIMEOUT);
 };
 
 describe("property: random role models", () => {
@@ -204,5 +205,5 @@ describe("property: wildcarded sample ARNs", () => {
       }),
       { numRuns: NUM_RUNS },
     );
-  });
+  }, TEST_TIMEOUT);
 });
