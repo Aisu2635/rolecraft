@@ -188,7 +188,7 @@ export function classifyArn(arn: string, svc: SlimService): string[] {
 const EXCLUDED: Record<string, string> = {
   BucketName: "/:",
   AccessPointName: "/:",
-  FunctionName: "/:",
+  FunctionName: "/",
   TableName: "/:",
   QueueName: "/:",
   TopicName: "/:",

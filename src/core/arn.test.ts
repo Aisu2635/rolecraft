@@ -220,7 +220,7 @@ describe("matchableTypes", () => {
   it("handles wildcard ARNs over lambda", () => {
     const t = matchableTypes("arn:aws:lambda:us-east-1:123456789012:function:f:*", lambda);
     expect(t).toEqual(expect.arrayContaining(["function alias", "function version"]));
-    expect(t).not.toContain("function");
+    expect(t).toContain("function");
   });
   it("covers short trailing-star ARNs and rejects bad ones", () => {
     expect(matchableTypes("arn:aws:logs:*", logs)).toEqual(expect.arrayContaining(["log-group"]));

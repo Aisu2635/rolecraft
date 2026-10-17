@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import ec2Raw from "../__fixtures__/aws/ec2.json";
 import ec2Full from "../../../public/data/svc/ec2.json";
+import lambdaRaw from "../../../public/data/svc/lambda.json";
 import iamRaw from "../__fixtures__/aws/iam.json";
 import logsRaw from "../__fixtures__/aws/logs.json";
 import s3Raw from "../__fixtures__/aws/s3.json";
@@ -14,6 +15,7 @@ import type { Trust } from "../model/model";
 import { buildTrust } from "../trust/trust";
 import { validateIdentityPolicy, validateTrustPolicy } from "./policy";
 
+const lambdaCatalog = createCatalog([lambdaRaw as unknown as SlimService]);
 const catalog = createCatalog([s3Raw, ec2Raw, textractRaw, iamRaw, stsRaw, logsRaw].map(toSlimService));
 const doc = (...Statement: unknown[]) => ({ Version: "2012-10-17", Statement });
 const allow = (Action: unknown, Resource: unknown = "*", extra: object = {}) => ({ Effect: "Allow", Action, Resource, ...extra });
@@ -273,5 +275,12 @@ describe("V_ARN_FORMAT", () => {
   it("accepts policy variables and star", () => {
     expect(ids(doc(allow("s3:GetObject", "arn:aws:s3:::home/${aws:username}/*")))).not.toContain("V_ARN_FORMAT");
     expect(ids(doc(allow("s3:GetObject", "*")))).not.toContain("V_ARN_FORMAT");
+  });
+});
+
+describe("lambda qualified invoke", () => {
+  it("accepts InvokeFunction on function:<name>:*", () => {
+    const d = doc(allow("lambda:InvokeFunction", "arn:aws:lambda:us-east-1:123456789012:function:f:*"));
+    expect(validateIdentityPolicy(d, lambdaCatalog)).toEqual([]);
   });
 });
