@@ -61,7 +61,9 @@ export function exportCliPowerShell(input: ExportInput): ExportFile {
   if (trust.kind === "principal") {
     const kind = trust.target;
     add(`# Creates a permissions policy and attaches it to an existing IAM ${kind}.`, "");
-    add(`$RoleName = ${psQuote(model.name)}`, `$PrincipalName = ${psQuote(trust.name)}`, "");
+    // $RoleName only names the policy; an unused variable is a PSScriptAnalyzer warning.
+    if (result.policy) add(`$RoleName = ${psQuote(model.name)}`);
+    add(`$PrincipalName = ${psQuote(trust.name)}`, "");
     if (result.policy) add("# Permissions policy", ...jsonFile("policy.json", stringifyPolicy(result.policy)), "");
     if (result.policy) {
       if (inline) {
@@ -105,23 +107,23 @@ export function exportCliPowerShell(input: ExportInput): ExportFile {
         add("", EKS_GROUP_COMMENT);
       }
     }
-    add("", `Write-Host "Attached the policy to ${kind} $PrincipalName."`);
+    add("", `Write-Output "Attached the policy to ${kind} $PrincipalName."`);
     return finish("attach-policy.ps1", lines);
   }
 
   add("# Creates an IAM role with its trust policy and permissions.", "");
-  add(`$RoleName = ${psQuote(model.name)}`, "");
 
   if (!result.trust) {
     if (result.policy) add("# Permissions policy", ...jsonFile("policy.json", stringifyPolicy(result.policy)), "");
     add(
       "# No trust policy could be generated, so no role was created. Fix the issues in RoleCraft and export again.",
       "",
-      'Write-Host "Nothing was created."',
+      'Write-Output "Nothing was created."',
     );
     return finish("create-role.ps1", lines);
   }
 
+  add(`$RoleName = ${psQuote(model.name)}`, "");
   add("# Trust policy: who can assume the role", ...jsonFile("trust.json", stringifyPolicy(result.trust)), "");
   if (result.policy) add("# Permissions policy", ...jsonFile("policy.json", stringifyPolicy(result.policy)), "");
 
@@ -179,13 +181,13 @@ export function exportCliPowerShell(input: ExportInput): ExportFile {
     );
   }
 
-  add("", 'Write-Host "Created role $RoleName."');
-  if (ec2) add('Write-Host "Created instance profile $RoleName."');
+  add("", 'Write-Output "Created role $RoleName."');
+  if (ec2) add('Write-Output "Created instance profile $RoleName."');
   if (result.policy) {
     add(
       inline
-        ? 'Write-Host "Added inline policy ${RoleName}-inline."'
-        : 'Write-Host "Created and attached policy ${RoleName}-policy."',
+        ? 'Write-Output "Added inline policy ${RoleName}-inline."'
+        : 'Write-Output "Created and attached policy ${RoleName}-policy."',
     );
   }
   return finish("create-role.ps1", lines);

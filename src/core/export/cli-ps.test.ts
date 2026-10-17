@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { REFERENCE_CASES } from "./__fixtures__/cases";
+import { VARIANT_CASES } from "./__fixtures__/variants";
 import { exportCliPowerShell } from "./cli-ps";
 import { stringifyPolicy } from "./json";
 import type { ExportInput } from "./types";
@@ -163,6 +164,8 @@ describe("exportCliPowerShell", () => {
     const g = make("s3-group");
     const gc = exportCliPowerShell({ ...g, result: { ...g.result, policy: null } }).content;
     expect(gc).not.toContain("create-policy");
+    // Unused variables are PSUseDeclaredVarsMoreThanAssignments warnings.
+    expect(gc).not.toContain("$RoleName");
   });
   it("never throws when trust is null for a role", () => {
     const input = make("ec2-ssm");
@@ -172,7 +175,16 @@ describe("exportCliPowerShell", () => {
     expect(c).toContain("Nothing was created");
     const np = exportCliPowerShell({ ...input, result: { ...input.result, trust: null, policy: null } }).content;
     expect(np).not.toContain("policy.json");
+    expect(c).not.toContain("$RoleName");
   });
+  it.each([...names.map((n) => [n, make(n)] as const), ...Object.entries(VARIANT_CASES).map(([n, b]) => [n, b()] as const)])(
+    "no Write-Host (PSAvoidUsingWriteHost); summary via Write-Output: %s",
+    (_n, input) => {
+      const c = exportCliPowerShell(input).content;
+      expect(c).not.toMatch(/Write-Host/i);
+      expect(c.trimEnd().split("\n").at(-1)).toMatch(/^Write-Output "/);
+    },
+  );
   it("reliability: pager, role wait, quiet output, auth mode note", () => {
     const c = exportCliPowerShell(make("eks-kubectl")).content;
     expect(c).toContain("aws iam wait role-exists --role-name $RoleName --no-cli-pager\n");

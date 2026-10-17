@@ -43,4 +43,4 @@ if ($LASTEXITCODE -ne 0) { throw "aws failed: create-policy" }
 aws iam attach-group-policy --group-name $PrincipalName --policy-arn $PolicyArn --no-cli-pager
 if ($LASTEXITCODE -ne 0) { throw "aws failed: attach-group-policy" }
 
-Write-Host "Attached the policy to group $PrincipalName."
+Write-Output "Attached the policy to group $PrincipalName."

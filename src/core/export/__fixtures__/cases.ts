@@ -6,7 +6,7 @@ import type { ExportInput } from "../types";
 
 const catalog = loadRealCatalog(["s3", "ec2", "lambda", "dynamodb", "logs", "eks", "cloudfront", "textract"]);
 
-const moduleGrant = (id: string, mod: string, preset: string, data: unknown): Grant => ({
+export const moduleGrant = (id: string, mod: string, preset: string, data: unknown): Grant => ({
   id,
   service: mod,
   module: mod,
@@ -14,7 +14,7 @@ const moduleGrant = (id: string, mod: string, preset: string, data: unknown): Gr
   access: { type: "preset", preset },
 });
 
-function build(over: Partial<RoleModel>): ExportInput {
+export function build(over: Partial<RoleModel>): ExportInput {
   const model: RoleModel = { ...createEmptyModel(), ...over };
   return { model, result: generate(model, catalog), summary: explain(model, catalog) };
 }

@@ -36,7 +36,9 @@ export function exportCliBash(input: ExportInput): ExportFile {
   if (trust.kind === "principal") {
     const kind = trust.target;
     add(`# Creates a permissions policy and attaches it to an existing IAM ${kind}.`, "");
-    add(`ROLE_NAME=${shQuote(model.name)}`, `PRINCIPAL_NAME=${shQuote(trust.name)}`, "");
+    // ROLE_NAME only names the policy; an unused variable is a shellcheck warning (SC2034).
+    if (result.policy) add(`ROLE_NAME=${shQuote(model.name)}`);
+    add(`PRINCIPAL_NAME=${shQuote(trust.name)}`, "");
     if (result.policy) add("# Permissions policy", ...heredoc("policy.json", stringifyPolicy(result.policy)), "");
     if (result.policy) {
       if (inline) {
@@ -71,7 +73,6 @@ export function exportCliBash(input: ExportInput): ExportFile {
   }
 
   add("# Creates an IAM role with its trust policy and permissions.", "");
-  add(`ROLE_NAME=${shQuote(model.name)}`, "");
 
   if (!result.trust) {
     if (result.policy) add("# Permissions policy", ...heredoc("policy.json", stringifyPolicy(result.policy)), "");
@@ -83,6 +84,7 @@ export function exportCliBash(input: ExportInput): ExportFile {
     return finish("create-role.sh", lines);
   }
 
+  add(`ROLE_NAME=${shQuote(model.name)}`, "");
   add("# Trust policy: who can assume the role", ...heredoc("trust.json", stringifyPolicy(result.trust)), "");
   if (result.policy) add("# Permissions policy", ...heredoc("policy.json", stringifyPolicy(result.policy)), "");
 

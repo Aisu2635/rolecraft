@@ -67,6 +67,6 @@ if ($LASTEXITCODE -ne 0) { throw "aws failed: create-access-entry" }
 aws eks associate-access-policy --cluster-name 'prod' --principal-arn "$RoleArn" --policy-arn arn:aws:eks::aws:cluster-access-policy/AmazonEKSViewPolicy --access-scope type=cluster --no-cli-pager | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "aws failed: associate-access-policy" }
 
-Write-Host "Created role $RoleName."
-Write-Host "Created instance profile $RoleName."
-Write-Host "Created and attached policy ${RoleName}-policy."
+Write-Output "Created role $RoleName."
+Write-Output "Created instance profile $RoleName."
+Write-Output "Created and attached policy ${RoleName}-policy."

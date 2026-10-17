@@ -130,6 +130,8 @@ describe("exportCliBash", () => {
     const g = make("s3-group");
     const gc = exportCliBash({ ...g, result: { ...g.result, policy: null } }).content;
     expect(gc).not.toContain("create-policy");
+    // Unused variables are shellcheck SC2034 warnings.
+    expect(gc).not.toContain("ROLE_NAME");
   });
   it("never throws when trust is null for a role", () => {
     const input = make("ec2-ssm");
@@ -137,6 +139,7 @@ describe("exportCliBash", () => {
     expect(c).not.toContain("create-role");
     expect(c).toContain("No trust policy");
     expect(c).toContain("Nothing was created");
+    expect(c).not.toContain("ROLE_NAME");
   });
   it("reliability: pager, role wait, quiet output, auth mode note", () => {
     const c = exportCliBash(make("eks-kubectl")).content;

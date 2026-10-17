@@ -75,5 +75,5 @@ if ($LASTEXITCODE -ne 0) { throw "aws failed: create-policy" }
 aws iam attach-role-policy --role-name $RoleName --policy-arn $PolicyArn --no-cli-pager
 if ($LASTEXITCODE -ne 0) { throw "aws failed: attach-role-policy" }
 
-Write-Host "Created role $RoleName."
-Write-Host "Created and attached policy ${RoleName}-policy."
+Write-Output "Created role $RoleName."
+Write-Output "Created and attached policy ${RoleName}-policy."

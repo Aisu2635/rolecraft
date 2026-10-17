@@ -42,4 +42,4 @@ if ($LASTEXITCODE -ne 0) { throw "aws failed: create-access-entry" }
 aws eks associate-access-policy --cluster-name 'prod' --principal-arn "$PrincipalArn" --policy-arn arn:aws:eks::aws:cluster-access-policy/AmazonEKSViewPolicy --access-scope type=cluster --region 'eu-west-1' --no-cli-pager | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "aws failed: associate-access-policy" }
 
-Write-Host "Attached the policy to user $PrincipalName."
+Write-Output "Attached the policy to user $PrincipalName."

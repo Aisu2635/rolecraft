@@ -72,6 +72,6 @@ if ($LASTEXITCODE -ne 0) { throw "aws failed: create-instance-profile" }
 aws iam add-role-to-instance-profile --instance-profile-name $RoleName --role-name $RoleName --no-cli-pager
 if ($LASTEXITCODE -ne 0) { throw "aws failed: add-role-to-instance-profile" }
 
-Write-Host "Created role $RoleName."
-Write-Host "Created instance profile $RoleName."
-Write-Host "Created and attached policy ${RoleName}-policy."
+Write-Output "Created role $RoleName."
+Write-Output "Created instance profile $RoleName."
+Write-Output "Created and attached policy ${RoleName}-policy."

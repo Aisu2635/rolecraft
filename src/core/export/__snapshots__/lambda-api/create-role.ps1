@@ -80,5 +80,5 @@ if ($LASTEXITCODE -ne 0) { throw "aws failed: create-role" }
 aws iam put-role-policy --role-name $RoleName --policy-name "${RoleName}-inline" --policy-document file://policy.json --no-cli-pager
 if ($LASTEXITCODE -ne 0) { throw "aws failed: put-role-policy" }
 
-Write-Host "Created role $RoleName."
-Write-Host "Added inline policy ${RoleName}-inline."
+Write-Output "Created role $RoleName."
+Write-Output "Added inline policy ${RoleName}-inline."
