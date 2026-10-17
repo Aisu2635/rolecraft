@@ -59,10 +59,10 @@ describe("exportCliBash", () => {
   it("eks access entries; region only when set", () => {
     const input = make("eks-kubectl");
     const c = exportCliBash(input).content;
-    expect(c).toContain("aws eks create-access-entry --cluster-name 'prod' --principal-arn \"$ROLE_ARN\"\n");
-    expect(c).toContain("AmazonEKSViewPolicy --access-scope type=cluster\n");
+    expect(c).toContain("aws eks create-access-entry --cluster-name 'prod' --principal-arn \"$ROLE_ARN\" >/dev/null\n");
+    expect(c).toContain("AmazonEKSViewPolicy --access-scope type=cluster >/dev/null\n");
     const r = exportCliBash({ ...input, model: { ...input.model, region: "eu-west-1" } }).content;
-    expect(r).toContain("--cluster-name 'prod' --principal-arn \"$ROLE_ARN\" --region 'eu-west-1'");
+    expect(r).toContain("--cluster-name 'prod' --principal-arn \"$ROLE_ARN\" --region 'eu-west-1' >/dev/null");
   });
   it("eks under group trust emits a comment, no aws eks calls", () => {
     const input = make("s3-group");
@@ -79,7 +79,9 @@ describe("exportCliBash", () => {
       ],
     };
     const c = exportCliBash({ ...input, model }).content;
-    expect(c).toContain("cannot target IAM groups");
+    expect(c).toContain(
+      "EKS access entries can't target IAM groups. Ask the cluster admin to add an access entry for each user, or use a role instead.",
+    );
     expect(c).not.toContain("aws eks");
   });
   it("ignores malformed or duplicate eks grants", () => {
@@ -129,6 +131,42 @@ describe("exportCliBash", () => {
     expect(c).not.toContain("create-role");
     expect(c).toContain("No trust policy");
     expect(c).toContain("Nothing was created");
+  });
+  it("reliability: pager, role wait, quiet output, auth mode note", () => {
+    const c = exportCliBash(make("eks-kubectl")).content;
+    expect(c.startsWith('#!/usr/bin/env bash\nset -euo pipefail\nexport AWS_PAGER=""\n')).toBe(true);
+    expect(c).toContain('aws iam wait role-exists --role-name "$ROLE_NAME"\n');
+    expect(c.indexOf("wait role-exists")).toBeLessThan(c.indexOf("create-access-entry"));
+    expect(c).toContain("authentication mode must be API or API_AND_CONFIG_MAP");
+    for (const cmd of ["iam create-role", "iam create-instance-profile", "eks create-access-entry", "eks associate-access-policy"]) {
+      const line = c.split("\n").find((l) => l.startsWith(`aws ${cmd}`));
+      expect(line?.endsWith(" >/dev/null")).toBe(true);
+    }
+  });
+  it("eks for principal user uses the caller account and a quoted user ARN", () => {
+    const input = make("s3-group");
+    const model = {
+      ...input.model,
+      region: "eu-west-1",
+      trust: { kind: "principal" as const, target: "user" as const, name: "o'brien" },
+      grants: [
+        {
+          id: "k",
+          service: "eks",
+          module: "eks",
+          scope: { type: "module" as const, data: { cluster: "prod" } },
+          access: { type: "preset" as const, preset: "kubectl" },
+        },
+      ],
+    };
+    const c = exportCliBash({ ...input, model }).content;
+    expect(c).toContain("ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)");
+    expect(c).toContain(String.raw`PRINCIPAL_ARN="arn:aws:iam::${"$"}{ACCOUNT_ID}:user/"'o'\''brien'`);
+    expect(c).toContain(
+      `aws eks create-access-entry --cluster-name 'prod' --principal-arn "$PRINCIPAL_ARN" --region 'eu-west-1' >/dev/null`,
+    );
+    expect(c).toContain("associate-access-policy");
+    expect(c).not.toContain("wait role-exists");
   });
   it("hostile values are never interpolated unquoted", () => {
     const input = make("eks-kubectl");
