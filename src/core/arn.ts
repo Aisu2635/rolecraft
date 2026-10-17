@@ -192,7 +192,7 @@ const EXCLUDED: Record<string, string> = {
   TableName: "/:",
   QueueName: "/:",
   TopicName: "/:",
-  LogGroupName: ":",
+  LogGroupName: "",
 };
 
 /** Format-side token: a literal char, or a placeholder (one-or-more of an allowed set). */

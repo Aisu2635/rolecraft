@@ -54,8 +54,9 @@ describe("wildcard-aware validation", () => {
   it("accepts AWS-standard log stream policies", () => {
     expect(ids(doc(allow(["logs:CreateLogStream", "logs:PutLogEvents"], LG)))).toEqual([]);
   });
-  it("rejects CreateLogGroup on a log stream ARN", () => {
-    expect(ids(doc(allow("logs:CreateLogGroup", LG)))).toEqual(["V_ACTION_RESOURCE_MISMATCH"]);
+  it("accepts log-group actions on log-group:<n>:* and rejects stream actions on a bare group ARN", () => {
+    expect(ids(doc(allow(["logs:CreateLogGroup", "logs:DescribeLogStreams", "logs:FilterLogEvents"], LG)))).toEqual([]);
+    expect(ids(doc(allow("logs:GetLogEvents", LG.slice(0, -2))))).toEqual(["V_ACTION_RESOURCE_MISMATCH"]);
   });
   it("accepts any logs actions on arn:aws:logs:*:*:*", () => {
     expect(ids(doc(allow(["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"], "arn:aws:logs:*:*:*")))).toEqual([]);

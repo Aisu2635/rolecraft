@@ -205,7 +205,7 @@ describe("matchableTypes", () => {
   it("handles wildcard ARNs over log groups", () => {
     const t = matchableTypes(LG + ":*", logs);
     expect(t).toContain("log-stream");
-    expect(t).not.toContain("log-group");
+    expect(t).toContain("log-group");
     const all = matchableTypes("arn:aws:logs:*:*:*", logs);
     expect(all).toEqual(expect.arrayContaining(["log-group", "log-stream"]));
     expect(matchableTypes(LG, logs)).toEqual(["log-group"]);
