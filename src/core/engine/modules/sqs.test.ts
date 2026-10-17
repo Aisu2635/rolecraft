@@ -85,7 +85,7 @@ describe("sqs module", () => {
   });
 
   it.each([
-    ["send", "SqsSendKms", "kms:GenerateDataKey"],
+    ["send", "SqsSendKms", ["kms:Decrypt", "kms:GenerateDataKey"]],
     ["receive", "SqsReceiveKms", "kms:Decrypt"],
     ["send-receive", "SqsSendReceiveKms", ["kms:Decrypt", "kms:GenerateDataKey"]],
   ])("kms add-on for %s", (preset, sid, action) => {

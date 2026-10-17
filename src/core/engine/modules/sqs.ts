@@ -46,12 +46,12 @@ export const sqsModule: Module<SqsData> = {
     const preset = presetOf(grant);
     const sid = `Sqs${pascal(preset)}`;
     const sends = preset !== "receive";
-    const receives = preset !== "send";
     const actions = PRESETS.find((p) => p.id === preset)?.actions ?? [];
     const arn = `arn:aws:sqs:${ctx.region ?? "*"}:${ctx.accountId ?? "*"}:${data.queueName}`;
     const statements: Statement[] = [stmt(`${sid}Queue`, prefixed("sqs", actions), [arn])];
     if (data.kmsKeyArn !== undefined) {
-      const kms = [...(sends ? ["GenerateDataKey"] : []), ...(receives ? ["Decrypt"] : [])];
+      // Producers need Decrypt too: SQS decrypts the data key it generates for SSE-KMS queues.
+      const kms = [...(sends ? ["GenerateDataKey"] : []), "Decrypt"];
       statements.push(stmt(`${sid}Kms`, prefixed("kms", kms), [data.kmsKeyArn]));
     }
     return { statements, issues: [] };
