@@ -48,4 +48,16 @@ describe("createLoader", () => {
     expect(c.hasService("s3")).toBe(true);
     expect(c.hasService("ec2")).toBe(true);
   });
+  it.each(["../x", "S3", "a/b", "", "a".repeat(65), "s3?x=1", "a b", "%2e%2e"])("rejects unsafe key %j without fetching", async (key) => {
+    const f = fake();
+    const l = createLoader(f);
+    await expect(l.loadService(key)).rejects.toThrow(/Invalid service key/);
+    await expect(l.loadServices(["s3", key])).rejects.toThrow(/Invalid service key/);
+    expect(f).not.toHaveBeenCalledWith(expect.stringContaining(key === "" ? "/data/svc/.json" : "svc/" + key));
+  });
+  it("accepts keys with digits and hyphens", async () => {
+    const f = fake();
+    await createLoader(f).loadService("s3").catch(() => undefined);
+    expect(f).toHaveBeenCalledWith("/data/svc/s3.json");
+  });
 });

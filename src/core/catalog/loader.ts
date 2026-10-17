@@ -7,6 +7,8 @@ export interface Loader {
   loadServices(keys: string[]): Promise<Catalog>;
 }
 
+const SERVICE_KEY = /^[a-z0-9-]{1,64}$/;
+
 export function createLoader(
   fetchJson: (path: string) => Promise<unknown>,
 ): Loader {
@@ -38,14 +40,16 @@ export function createLoader(
         async () => (await fetchJson("/data/index.json")) as ServiceIndex,
       ),
     loadService: (key) =>
-      memo(
+      !SERVICE_KEY.test(key)
+        ? Promise.reject(new Error(`Invalid service key "${key.slice(0, 64)}".`))
+        : memo(
         () => serviceP.get(key),
         (p) => {
           if (p) serviceP.set(key, p);
           else serviceP.delete(key);
         },
         async () =>
-          (await fetchJson(`/data/svc/${key}.json`)) as SlimService,
+          (await fetchJson(`/data/svc/${encodeURIComponent(key)}.json`)) as SlimService,
       ),
     async loadServices(keys) {
       const all = await Promise.all(keys.map((k) => this.loadService(k)));
