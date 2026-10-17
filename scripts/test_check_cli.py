@@ -179,7 +179,9 @@ class NoSilentSkips(unittest.TestCase):
         )
 
     def test_case_arm(self):
-        self.assertIn("unknown flag --rolename", all_problems("case $x in\n  *a*) aws iam get-role --rolename x ;;\nesac")[0])
+        self.assertIn(
+            "unknown flag --rolename", all_problems("x=a\ncase $x in\n  *a*) aws iam get-role --rolename x ;;\nesac")[0]
+        )
 
     def test_function_body(self):
         self.assertIn("unknown flag --rolename", all_problems("f() { aws iam get-role --rolename x; }")[0])
@@ -218,7 +220,7 @@ class NoSilentSkips(unittest.TestCase):
         for text in [
             "$x = (aws iam get-role --rolename x)",
             "$x = @(aws iam get-role --rolename x)",
-            "$a | ForEach-Object { aws iam get-role --rolename $_ }",
+            "$a = @(1); $a | ForEach-Object { aws iam get-role --rolename $_ }",
             "& aws iam get-role --rolename x",
             "$null = aws iam get-role --rolename x",
             "try { aws iam get-role --rolename x } catch { }",
@@ -298,6 +300,133 @@ class ValueValidation(unittest.TestCase):
                 f.write("")
             p = problems("aws iam create-policy --policy-name n --policy-document file://p.json", base_dir=d)
             self.assertIn("PolicyDocument", p[0])
+
+
+class UndefinedVariables(unittest.TestCase):
+    """Re-review I1: a reference to a never-assigned variable is a problem (typo'd names fail)."""
+
+    def test_powershell_typos_fail(self):
+        base = "$RoleName = 'r'\n"
+        self.assertEqual(
+            extraction(base + "aws iam get-role --role-name $RoleNam --no-cli-pager", "ps"), ["2: $RoleNam is never assigned"]
+        )
+        self.assertEqual(
+            extraction(base + 'aws iam create-policy --policy-name "${RoleNme}-policy" --policy-document x', "ps"),
+            ["2: $RoleNme is never assigned"],
+        )
+
+    def test_bash_typos_fail(self):
+        base = "ROLE_NAME='r'\n"
+        self.assertEqual(extraction(base + 'aws iam get-role --role-name "$ROLE_NAM"'), ["2: $ROLE_NAM is never assigned"])
+        self.assertEqual(
+            extraction(base + 'aws iam create-policy --policy-name "${ROLE_NME}-policy" --policy-document x'),
+            ["2: $ROLE_NME is never assigned"],
+        )
+        self.assertEqual(extraction(base + 'echo "Created $ROLE_NAM."'), ["2: $ROLE_NAM is never assigned"])
+
+    def test_powershell_assignment_forms_and_automatic_variables(self):
+        text = "\n".join(
+            [
+                "$ErrorActionPreference = 'Stop'",
+                "$Arn = aws iam get-role --role-name r --query Role.Arn --output text --no-cli-pager",
+                "if ($LASTEXITCODE -ne 0) { throw 'x' }",
+                "foreach ($Name in @('a')) { Write-Output $Name }",
+                "@('a') | ForEach-Object { Write-Output $_ $PSItem }",
+                "$script:Count = 1",
+                "[string]$Typed = 'x'",
+                "Write-Output $Arn $Count $Typed $env:AWS_REGION $PWD.ProviderPath $null $true $HOME $PSScriptRoot",
+                "Write-Output '$NotAVariable' \"`$Escaped\" $ARN",
+            ]
+        )
+        self.assertEqual(extraction(text, "ps"), [])
+
+    def test_bash_assignment_forms_and_special_variables(self):
+        text = "\n".join(
+            [
+                "set -euo pipefail",
+                "ARN=$(aws iam get-role --role-name r --query Role.Arn --output text)",
+                "export REGION=us-east-1",
+                "readonly A=1 B",
+                'f() { local L=1; echo "$L $1 $# $@ $?"; }',
+                "read -r ANSWER",
+                'for ITEM in a b; do echo "$ITEM"; done',
+                "if true; then COND=x; fi",
+                'echo "$ARN $REGION $A $B $ANSWER $COND $HOME $PWD $PATH $AWS_REGION ${UNSET_OK:-default}"',
+                "echo '$NOT_A_VAR' \\$ESCAPED",
+            ]
+        )
+        self.assertEqual(extraction(text), [])
+
+    def test_shell_heredoc_body_sees_outer_names(self):
+        self.assertEqual(extraction("R='r'\nbash <<EOF\necho \"$R $NOPE\"\nEOF"), ["3: $NOPE is never assigned"])
+
+    def test_spans_and_comments_are_not_scripts(self):
+        self.assertEqual(check_cli.markdown('Run `aws iam get-role --role-name "$ROLE_NAME"` later.')[1], [])
+
+
+class StaleLiterals(unittest.TestCase):
+    """Re-review M2: any second, conditional, indented or scoped assignment makes the variable dynamic."""
+
+    def last_word(self, text: str, dialect: str = "bash") -> check_cli.Word:
+        return check_cli.extract_commands(text, dialect)[-1].words[-1]
+
+    def test_conditional_reassignment_is_dynamic(self):
+        w = self.last_word("ROLE_NAME='ok'\nif true; then ROLE_NAME='bad name'; fi\naws iam get-role --role-name \"$ROLE_NAME\"")
+        self.assertTrue(w.opaque)
+        w = self.last_word("if true; then\n  ROLE_NAME='bad name'\nfi\naws iam get-role --role-name \"$ROLE_NAME\"")
+        self.assertTrue(w.opaque)
+
+    def test_export_readonly_local_are_dynamic(self):
+        for form in ("export ROLE_NAME='r'", "readonly ROLE_NAME='r'", "declare ROLE_NAME='r'"):
+            self.assertTrue(self.last_word(form + '\naws iam get-role --role-name "$ROLE_NAME"').opaque, form)
+
+    def test_powershell_scope_prefix_is_dynamic(self):
+        w = self.last_word("$RoleName = 'r'\n$script:RoleName = 'bad name'\naws iam get-role --role-name $RoleName", "ps")
+        self.assertTrue(w.opaque)
+
+    def test_single_top_level_literal_is_substituted(self):
+        w = self.last_word("ROLE_NAME='r'\naws iam get-role --role-name \"$ROLE_NAME\"")
+        self.assertEqual((w.value, w.opaque), ("r", False))
+
+
+class AwsForms(unittest.TestCase):
+    """Re-review M1: aws.exe, quoted aws, heredocs piped to a shell, README prose."""
+
+    def test_aws_exe_and_quoted(self):
+        self.assertIn("unknown flag --rolename", all_problems("aws.exe iam get-role --rolename x", "ps")[0])
+        self.assertIn("unknown flag --rolename", all_problems("& 'aws.exe' iam get-role --rolename x", "ps")[0])
+        self.assertIn("unknown flag --rolename", all_problems("'aws' iam get-role --rolename x")[0])
+        self.assertIn("unknown flag --rolename", all_problems('"aws" iam get-role --rolename x')[0])
+
+    def test_aws_like_matches_exe_and_quotes(self):
+        self.assertEqual(len(extraction('echo "aws.exe iam get-role --role-name x"')), 1)
+        self.assertEqual(len(extraction("echo \"'aws' iam get-role\"")), 1)
+
+    def test_heredoc_piped_to_shell_is_checked(self):
+        for sh in ("bash", "sh", "/bin/bash -s"):
+            text = f"cat <<'EOF' | {sh}\naws iam get-role --rolename x\nEOF"
+            self.assertEqual(all_problems(text)[0], "2: iam get-role: unknown flag --rolename", sh)
+        self.assertEqual(all_problems("cat <<'EOF' | jq .\naws iam bogus\nEOF"), [])
+
+    def test_readme_prose_command_outside_code(self):
+        _, probs = check_cli.markdown("Then run aws iam get-role --role-name x to see it.")
+        self.assertEqual(len(probs), 1)
+        self.assertIn("outside a code span", probs[0][1])
+        self.assertEqual(check_cli.markdown("Then run `aws iam get-role --role-name x` to see it.")[1], [])
+
+
+class UncompilablePatterns(unittest.TestCase):
+    """Re-review M3: model patterns Python can't compile are counted, not silently ignored."""
+
+    def test_counted(self):
+        class Shape:
+            type_name = "string"
+            enum = None
+            metadata = {"pattern": "\\p{L}+"}
+
+        check_cli.UNCOMPILABLE.clear()
+        self.assertEqual(check_cli.check_value("x", Shape(), "w"), [])
+        self.assertEqual(check_cli.UNCOMPILABLE, {"\\p{L}+"})
 
 
 class SourceKinds(unittest.TestCase):

@@ -9,11 +9,16 @@ Walks <dir> recursively and checks every `aws` invocation in command position in
     (PowerShell rules), and inline code spans starting with `aws ` (a span followed by "command(s)" only
     names an operation, so only the operation's existence is checked),
   * `aws ...` commands quoted in template.yaml / main.tf comments (deploy/delete/attach hints).
-Heredoc / here-string bodies and script comment lines are skipped.
+Heredoc / here-string bodies and script comment lines are skipped, except heredocs fed to a shell
+(`bash <<EOF`, `cat <<EOF | bash`), whose bodies are checked as scripts. `aws.exe`, quoted `'aws'` and paths
+to aws count as aws.
 
 It never skips silently: a line that looks like an aws command (`aws <word> <word>`) but yielded no
 command, an unterminated heredoc/here-string/quote/substitution, and a fence in another language that
-contains `aws ` are all problems.
+contains `aws ` are all problems, and so is a README prose line (outside code spans and fences) that reads
+like a command (`aws <svc> <op> --flag`). In scripts and README fences, a reference to a variable that is
+never assigned (in any form) and isn't automatic/environment (PowerShell automatic variables, $env:*;
+bash special parameters, HOME/PWD/PATH-style variables, AWS_*) is a problem: typos fail.
 
 For each command it asserts: the operation (or waiter) exists, every --flag (or --flag=value) maps to an
 input member or a CLI global (none given twice), boolean members are used as --flag / --no-flag, every
@@ -21,8 +26,10 @@ flag that needs a value has one, values parse (integers, booleans, JSON or short
 file:// files next to the script), enums hold, every required member is present, and finally botocore's
 own ParamValidator (what the CLI runs before sending) accepts the parameters, plus the model's max length
 and pattern for literal strings. Literal variable assignments in the script (bash `VAR='...'`, PowerShell
-`$Var = '...'`) are substituted, so "$ROLE_NAME" and "${ROLE_NAME}-policy" are checked for real; values
-that stay dynamic (command substitutions, unknown variables) get placeholders that satisfy the model.
+`$Var = '...'`, unindented, the only assignment of that name) are substituted, so "$ROLE_NAME" and
+"${ROLE_NAME}-policy" are checked for real; values that stay dynamic (reassigned, conditional, scoped,
+exported, from a command) get placeholders that satisfy the model. The summary counts model patterns
+Python's re cannot compile (those are not checked).
 Exit 1 with `file:line: message` per problem.
 """
 
@@ -80,8 +87,14 @@ CFN_DEPLOY_FLAGS: dict[str, str] = {
 CFN_DEPLOY_REQUIRED = ("--template-file", "--stack-name")
 CFN_CAPABILITIES = {"CAPABILITY_IAM", "CAPABILITY_NAMED_IAM", "CAPABILITY_AUTO_EXPAND"}
 
-# Anything that looks like `aws <service> <operation>`: every match must yield a checked command.
-AWS_LIKE = re.compile(r"\baws\s+[a-z0-9-]+\s+[a-z0-9-]+")
+# Anything that looks like `aws <service> <operation>` (also aws.exe, 'aws', "aws"): every match must yield a
+# checked command. So echo / Write-Output text containing `aws <word> <word>` is reported too (fails safe).
+AWS_LIKE = re.compile(r"\baws(?:\.exe)?['\"]?\s+[a-z0-9-]+\s+[a-z0-9-]+")
+# README prose (outside code spans and fences) that reads like a runnable command.
+PROSE_COMMAND = re.compile(r"\baws(?:\.exe)?\s+[a-z0-9-]+\s+[a-z0-9-]+\s+--[a-z]")
+AWS_NAMES = {"aws", "aws.exe"}
+# Model patterns Python's re cannot compile (Java-only syntax); counted in the summary.
+UNCOMPILABLE: set[str] = set()
 VAR_REF = re.compile(r"\$(?:\{([A-Za-z_]\w*)\}|([A-Za-z_]\w*))")
 
 
@@ -118,11 +131,13 @@ class Scanner:
         self.ps = dialect == "ps"
         self.line_of = line_of  # offset -> source line number
         self.commands: list[Command] = []
-        # bash: (marker, strip tabs, body is a shell script) for heredoc bodies starting on the next line
-        self.heredocs: list[tuple[str, bool, bool]] = []
+        # bash: [marker, strip tabs, body is a shell script] for heredoc bodies starting on the next line
+        self.heredocs: list[list] = []
         self.command_word = ""  # first word of the current simple command (bash: `bash <<EOF` runs the body)
         self.here_string: str | None = None  # PowerShell: terminator ('@ or "@) of a body starting next line
         self.backticks = 0  # bash: depth of `...` command substitution
+        self.assigned: list[str] = []  # bash: NAME=... words in command position
+        self.simple: list[list[Word]] = []  # bash: words of each simple command that isn't an aws command
 
     def _stop(self, c: str) -> bool:
         """Characters that end a word."""
@@ -252,6 +267,8 @@ class Scanner:
         """Scans a command list until `closer`; returns the index after it."""
         s, n = self.s, len(self.s)
         cmdpos = True
+        cur: list[Word] | None = None  # words of the current simple command
+        piped: list[int] = []  # heredocs opened earlier in the current pipeline (`cat <<EOF | bash`)
         while i < n:
             c = s[i]
             if c.isspace():
@@ -263,9 +280,14 @@ class Scanner:
                 i = n  # comment to end of line
                 break
             if c in ";|&":
-                while i < n and s[i] in ";|&":
-                    i += 1
+                j = i
+                while j < n and s[j] in ";|&":
+                    j += 1
+                if s[i:j] != "|":
+                    piped = []
+                i = j
                 cmdpos = True
+                cur = None
                 self.command_word = ""
                 continue
             if c in "<>":
@@ -282,7 +304,8 @@ class Scanner:
                     w, i = self.read_word(i)
                     if not self.ps and op == "<<":
                         script = os.path.basename(self.command_word) in SHELLS
-                        self.heredocs.append((w.value, strip_tabs, script))
+                        piped.append(len(self.heredocs))
+                        self.heredocs.append([w.value, strip_tabs, script])
                 continue
             if c == "(":
                 i = self.scan(i + 1, ")")
@@ -291,24 +314,30 @@ class Scanner:
             if c == ")":
                 i += 1
                 cmdpos = True  # bash `case` pattern: `pat) aws ...`
+                cur = None
                 continue
             if self.ps and c in "{}":
                 i += 1
                 cmdpos = True
+                cur = None
                 continue
             start = i
             w, j = self.read_word(i)
-            if cmdpos and w.raw == "aws":
+            if cmdpos and is_aws(w):
                 i = self.read_command(start)
                 cmdpos = False
+                cur = None
                 continue
             i = j
             if not self.ps and w.raw in ("{", "}"):
                 cmdpos = True  # group / function body: `f() { aws ...; }`
+                cur = None
                 continue
             if not cmdpos:
                 if self.ps and w.raw in ("=", "+="):
                     cmdpos = True  # $Var = aws ...
+                elif cur is not None:
+                    cur.append(w)
                 continue
             if self.ps:
                 if w.raw.lower() in PS_KEYWORDS:
@@ -316,9 +345,20 @@ class Scanner:
                 if w.raw.startswith("$"):
                     cmdpos = False  # assignment target; `=` re-enables
                     continue
-            elif w.raw in BASH_KEYWORDS or re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", w.raw):
-                continue  # keyword, `env`, or VAR=... prefix
+            elif w.raw in BASH_KEYWORDS:
+                continue  # keyword or `env`
+            else:
+                m = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)\+?=", w.raw)
+                if m:
+                    self.assigned.append(m.group(1))
+                    continue  # VAR=... (assignment or prefix)
             self.command_word = w.value
+            if not self.ps:
+                cur = [w]
+                self.simple.append(cur)
+                if os.path.basename(w.value) in SHELLS:
+                    for k in piped:  # `cat <<'EOF' | bash`: the heredoc body runs
+                        self.heredocs[k][2] = True
             cmdpos = False
         if closer and self.here_string is None:  # a here-string body continues the expression
             raise ValueError(f"unterminated {'$(' if closer == ')' else closer} substitution")
@@ -337,42 +377,172 @@ def resolve(word: Word, variables: dict[str, str], ps: bool) -> Word:
     return Word(word.raw, value, False)
 
 
-def record_assignment(logical: str, dialect: str, variables: dict[str, str]) -> None:
-    """Tracks literal assignments (`VAR='x'`, `$Var = 'x'`); other assignments forget the variable."""
-    text = logical.strip()
-    if dialect == "bash":
-        m = re.fullmatch(r"([A-Za-z_]\w*)=(.*)", text)
-        name = m.group(1) if m else None
-    else:
-        m = re.fullmatch(r"\$([A-Za-z_]\w*)\s*=\s*(.*)", text)
-        name = m.group(1).lower() if m else None
-    if not m or name is None:
-        return
-    rest = m.group(2)
-    variables.pop(name, None)
+def is_aws(w: Word) -> bool:
+    """`aws`, `aws.exe`, `'aws'`, or a path to either (`/usr/local/bin/aws`, Windows backslash paths)."""
+    return not w.opaque and re.split(r"[\\/]", w.value)[-1].lower() in AWS_NAMES
+
+
+# Variables that exist without an assignment in the script.
+PS_AUTOMATIC = {
+    "_", "psitem", "pwd", "lastexitcode", "null", "true", "false", "erroractionpreference", "args", "matches",
+    "psscriptroot", "pscommandpath", "home", "psversiontable", "error", "host", "input", "myinvocation",
+    "iswindows", "islinux", "ismacos", "progresspreference", "verbosepreference", "warningpreference",
+    "informationpreference", "debugpreference", "confirmpreference", "ofs", "this",
+}  # fmt: skip
+BASH_ENV = {
+    "_", "HOME", "PWD", "OLDPWD", "PATH", "USER", "SHELL", "TMPDIR", "IFS", "RANDOM", "LINENO", "SECONDS",
+    "BASH_SOURCE", "BASH_VERSION", "FUNCNAME", "PIPESTATUS", "OSTYPE", "HOSTNAME", "UID", "EUID", "PPID",
+    "REPLY", "OPTARG", "OPTIND",
+}  # fmt: skip
+PS_SCOPES = ("script", "global", "local", "private", "using")
+# ${X}, ${#X}, ${!X}; group 3 is a default/assign/error/alternate operator (`${X:-d}`), which can't fail.
+BASH_BRACED = re.compile(r"\{([#!]?)([A-Za-z_]\w*)(:?[-=?+])?")
+PS_BRACED = re.compile(r"\{([A-Za-z_]\w*(?::[A-Za-z_]\w*)?)\}")
+
+
+def references(text: str, ps: bool) -> list[tuple[int, str]]:
+    """(offset, name) of every variable reference outside single quotes and comments.
+
+    bash `${X:-default}` style expansions (default, assign, error, alternate) are not references that can
+    fail, so they are left out; PowerShell `$env:X` is the environment, also left out.
+    """
+    refs: list[tuple[int, str]] = []
+    esc = "`" if ps else "\\"
+    stack: list[str] = []  # '"' (double quotes) or ')' (command substitution)
+    i, n = 0, len(text)
+    while i < n:
+        c = text[i]
+        in_dq = bool(stack) and stack[-1] == '"'
+        if c == esc and i + 1 < n:
+            i += 2
+            continue
+        if c == "$" and i + 1 < n:
+            nxt = text[i + 1]
+            if nxt == "(":
+                stack.append(")")
+                i += 2
+                continue
+            m = re.match(PS_BRACED if ps else BASH_BRACED, text[i + 1 :])
+            if m and not ps:
+                if not m.group(3):
+                    refs.append((i, m.group(2)))
+                i += 1 + m.end()
+                continue
+            if m and ps:
+                name = m.group(1)
+                scope, _, rest = name.rpartition(":")
+                if scope.lower() != "env":
+                    refs.append((i, rest if scope.lower() in PS_SCOPES or not scope else name))
+                i += 1 + m.end()
+                continue
+            m = re.match(r"([A-Za-z_]\w*)(:[A-Za-z_]\w*)?" if ps else r"[A-Za-z_]\w*", text[i + 1 :])
+            if m:
+                if ps and m.group(2):
+                    scope = m.group(1).lower()
+                    if scope != "env":
+                        refs.append((i, m.group(2)[1:] if scope in PS_SCOPES else m.group(0)))
+                else:
+                    refs.append((i, m.group(1) if ps else m.group(0)))
+                i += 1 + m.end()
+                continue
+            i += 1
+            continue
+        if in_dq:
+            if c == '"':
+                if ps and i + 1 < n and text[i + 1] == '"':
+                    i += 2
+                    continue
+                stack.pop()
+            i += 1
+            continue
+        if c == "'" or (ps and c in PS_SINGLE_QUOTES):
+            j = i + 1
+            while j < n and not (text[j] == "'" or (ps and text[j] in PS_SINGLE_QUOTES)):
+                j += 1
+            i = j + 1
+            continue
+        if c == '"':
+            stack.append('"')
+        elif c == ")" and stack:
+            stack.pop()
+        elif c == "#" and (i == 0 or text[i - 1].isspace() or text[i - 1] in ";|&("):
+            break  # comment
+        i += 1
+    return refs
+
+
+PS_ASSIGN = re.compile(r"\$(?:\{)?(?:([A-Za-z_]\w*):)?([A-Za-z_]\w*)\}?\s*(?:[-+*/%]|\?\?)?=(?!=)")
+
+
+def assigned_names(text: str, sc: Scanner, ps: bool) -> list[str]:
+    """Every name the logical line assigns, in any form (literal or not)."""
+    if ps:
+        names = [m.group(2) for m in PS_ASSIGN.finditer(text) if (m.group(1) or "").lower() != "env"]
+        names += re.findall(r"(?i)\bforeach\s*\(\s*\$([A-Za-z_]\w*)\s+in\b", text)
+        names += re.findall(r"(?i)-(?:Out|Error|Warning|Information|Pipeline)Variable\s+['\"]?([A-Za-z_]\w*)", text)
+        names += re.findall(r"(?i)\b(?:Set|New)-Variable\s+(?:-Name\s+)?['\"]?([A-Za-z_]\w*)", text)
+        for block in re.findall(r"(?i)\bparam\s*\(([^)]*)\)", text) + re.findall(r"(?i)\bfunction\s+[\w-]+\s*\(([^)]*)\)", text):
+            names += re.findall(r"\$([A-Za-z_]\w*)", block)
+        return names
+    names = list(sc.assigned)
+    ident = re.compile(r"[A-Za-z_]\w*")
+    for words in sc.simple:
+        head, rest = os.path.basename(words[0].value), words[1:]
+        values = [w.value for w in rest if not w.opaque or "=" in w.raw]
+        if head in ("export", "readonly", "local", "declare", "typeset"):
+            names += [m.group(1) for v in values if (m := re.match(r"([A-Za-z_]\w*)(?:\+?=|$)", v)) and not v.startswith("-")]
+        elif head in ("read", "mapfile", "readarray"):
+            names += [w.value for w in rest if ident.fullmatch(w.raw)]
+        elif head == "printf" and "-v" in values[:-1]:
+            names.append(values[values.index("-v") + 1])
+        elif head == "getopts" and len(values) >= 2:
+            names.append(values[1])
+        elif head in ("for", "select") and values:
+            names.append(values[0])
+    return names
+
+
+def literal_candidate(text: str, ps: bool) -> tuple[str, str] | None:
+    """(name, value text) for an unindented whole-line `NAME=value` / `$Name = value`."""
+    m = re.fullmatch(r"\$([A-Za-z_]\w*)\s*=\s*(.*)" if ps else r"([A-Za-z_]\w*)=(.*)", text)
+    return (m.group(1), m.group(2)) if m else None
+
+
+def literal_value(rest: str, dialect: str, variables: dict[str, str]) -> str | None:
     if not rest:
-        if dialect == "bash":
-            variables[name] = ""
-        return
+        return "" if dialect == "bash" else None
     sc = Scanner(rest, dialect, lambda _off: 0)
     try:
         w, j = sc.read_word(0)
     except ValueError:
-        return
+        return None
     if sc.skip_space(j) != len(rest) or sc.commands:
-        return
+        return None
     w = resolve(w, variables, dialect == "ps")
     if not w.opaque and (dialect == "bash" or w.raw[:1] in PS_SINGLE_QUOTES + '"'):
-        variables[name] = w.value
+        return w.value
+    return None
 
 
-def extract(text: str, dialect: str, line_offset: int = 0) -> tuple[list[Command], list[Problem]]:
-    """Commands in a script, plus problems: unrecognized aws-looking lines, unterminated constructs."""
+@dataclass
+class Logical:
+    text: str
+    nums: list[int]  # source line per character
+    scanner: Scanner
+
+
+def extract(
+    text: str, dialect: str, line_offset: int = 0, undefined: bool = True, outer: frozenset[str] = frozenset()
+) -> tuple[list[Command], list[Problem]]:
+    """Commands in a script, plus problems: unrecognized aws-looking lines, unterminated constructs, and
+    (when `undefined`) references to variables the script never assigns. `outer`: names assigned by the
+    script a heredoc body comes from."""
     ps = dialect == "ps"
-    cmds: list[Command] = []
+    key = str.lower if ps else str
     problems: list[Problem] = []
-    variables: dict[str, str] = {}
-    heredocs: list[tuple[str, bool, bool]] = []
+    logicals: list[Logical] = []
+    bodies: list[tuple[str, int]] = []  # (body, first line) of heredocs fed to a shell
+    heredocs: list[list] = []
     body: list[str] = []
     body_start = 0
     here_string: str | None = None
@@ -387,10 +557,7 @@ def extract(text: str, dialect: str, line_offset: int = 0) -> tuple[list[Command
             sc.scan(0, None)
         except ValueError as e:
             problems.append((nums[0] + line_offset, f"cannot tokenize: {e}"))
-        for c in sc.commands:
-            c.words = [resolve(w, variables, ps) for w in c.words]
-        cmds.extend(sc.commands)
-        record_assignment(logical, dialect, variables)
+        logicals.append(Logical(logical, nums, sc))
         for ln in sorted(set(nums)):
             part = "".join(ch for ch, num in zip(logical, nums, strict=True) if num == ln)
             found = len(AWS_LIKE.findall(part))
@@ -406,10 +573,8 @@ def extract(text: str, dialect: str, line_offset: int = 0) -> tuple[list[Command
             marker, strip_tabs, script = heredocs[0]
             if (line.lstrip("\t") if strip_tabs else line) == marker:
                 heredocs.pop(0)
-                if script:  # `bash <<EOF`: the body runs, so check it
-                    c, p = extract("\n".join(body), "bash", line_offset=line_offset + body_start - 1)
-                    cmds.extend(c)
-                    problems.extend(p)
+                if script:  # `bash <<EOF` / `cat <<EOF | bash`: the body runs, so check it
+                    bodies.append(("\n".join(body), body_start))
                 body = []
             else:
                 if not body:
@@ -447,6 +612,44 @@ def extract(text: str, dialect: str, line_offset: int = 0) -> tuple[list[Command
         problems.append((opened_at + line_offset, f"unterminated here-string (no line starting with {here_string})"))
     if ps and block_comment:
         problems.append((line_offset + 1, "unterminated <# block comment"))
+
+    # Every assignment of every name, in any form. Only a name assigned exactly once, by an unindented
+    # whole-line literal, keeps its value; anything else (reassigned, conditional, export/local, scoped,
+    # from a command) is dynamic and gets a placeholder.
+    counts: dict[str, int] = {}
+    for lg in logicals:
+        for name in assigned_names(lg.text, lg.scanner, ps):
+            counts[key(name)] = counts.get(key(name), 0) + 1
+    variables: dict[str, str] = {}
+    for lg in logicals:
+        cand = literal_candidate(lg.text, ps)
+        if cand and counts.get(key(cand[0])) == 1:
+            value = literal_value(cand[1], dialect, variables)
+            if value is not None:
+                variables[key(cand[0])] = value
+    cmds: list[Command] = []
+    for lg in logicals:
+        for c in lg.scanner.commands:
+            c.words = [resolve(w, variables, ps) for w in c.words]
+        cmds.extend(lg.scanner.commands)
+
+    known = set(counts) | set(outer) | (PS_AUTOMATIC if ps else BASH_ENV)
+    if undefined:
+        seen: set[tuple[int, str]] = set()
+        for lg in logicals:
+            for off, name in references(lg.text, ps):
+                if key(name) in known or (not ps and name.startswith("AWS_")):
+                    continue
+                line = lg.nums[min(off, len(lg.nums) - 1)] + line_offset
+                if (line, key(name)) not in seen:
+                    seen.add((line, key(name)))
+                    problems.append((line, f"${name} is never assigned"))
+    for body_text, start in bodies:
+        c, p = extract(body_text, "bash", line_offset + start - 1, undefined, frozenset(known))
+        cmds.extend(c)
+        problems.extend(p)
+    cmds.sort(key=lambda c: c.line)
+    problems.sort(key=lambda p: p[0])
     return cmds, problems
 
 
@@ -481,8 +684,10 @@ def markdown(text: str) -> tuple[list[Command], list[Problem]]:
                 problems.append((i + 1, f"```{lang} block contains aws commands but is not a shell/PowerShell fence"))
             i = j + 1
             continue
+        if PROSE_COMMAND.search(re.sub(r"`[^`]*`", "", lines[i])):
+            problems.append((i + 1, "aws command in README prose outside a code span or fence: not checked"))
         for span in re.finditer(r"`(aws [^`]*)`", lines[i]):
-            c, p = extract(span.group(1), "bash", line_offset=i)
+            c, p = extract(span.group(1), "bash", line_offset=i, undefined=False)
             problems += p
             # A span followed by "command(s)" only names an operation ("run the `aws iam attach-group-policy`
             # commands"); every other span is a runnable command and is checked in full.
@@ -504,7 +709,7 @@ def comments(text: str) -> tuple[list[Command], list[Problem]]:
         body = line.lstrip()[1:].strip()
         found = []
         for m in re.finditer(r"(?:^|^Deploy: |\()(aws [^()]+)", body):
-            c, p = extract(m.group(1), "bash", line_offset=idx)
+            c, p = extract(m.group(1), "bash", line_offset=idx, undefined=False)
             found += c
             problems += p
         if len(found) < len(AWS_LIKE.findall(body)):
@@ -635,7 +840,8 @@ def check_value(data, shape, what: str) -> list[str]:
             try:
                 rx = re.compile(meta["pattern"])
             except re.error:
-                return []  # Java-only regex syntax: botocore doesn't check patterns either
+                UNCOMPILABLE.add(meta["pattern"])  # Java-only syntax; botocore doesn't check patterns either
+                return []
             if not rx.fullmatch(data):
                 return [f"{what}: '{data[:40]}' does not match the pattern {meta['pattern']}"]
     return []
@@ -936,14 +1142,15 @@ def main(argv: list[str]) -> int:
                 ops.add(" ".join(w.value for w in cmd.words[1:3]))
                 for p in check_command(cmd, model, dirpath):
                     problems.append(f"{path}:{cmd.line}: {p}")
+    unchecked = f"{len(UNCOMPILABLE)} model pattern(s) not compilable by Python re (left to botocore, which skips patterns)"
     if problems:
         print("\n".join(problems))
-        print(f"\n{len(problems)} problem(s) in {commands} aws commands across {files} files.", file=sys.stderr)
+        print(f"\n{len(problems)} problem(s) in {commands} aws commands across {files} files; {unchecked}.", file=sys.stderr)
         return 1
     if commands == 0:
         print(f"No aws commands found under {root}.", file=sys.stderr)
         return 1
-    print(f"OK: {commands} aws commands ({len(ops)} distinct operations) in {files} files match the AWS CLI model.")
+    print(f"OK: {commands} aws commands ({len(ops)} distinct operations) in {files} files match the AWS CLI model; {unchecked}.")
     return 0
 
 
