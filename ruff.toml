@@ -1,0 +1,11 @@
+# Lints the Layer-4 Python checkers in scripts/ (run by scripts/check-exports.sh).
+include = ["scripts/*.py"]
+target-version = "py312"
+line-length = 130
+
+[lint]
+select = ["E", "F", "W", "I", "B", "UP", "BLE", "SIM"]
+
+[lint.per-file-ignores]
+# Long literal CLI commands are test data.
+"scripts/test_*.py" = ["E501"]

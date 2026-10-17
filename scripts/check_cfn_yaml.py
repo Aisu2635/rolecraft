@@ -8,6 +8,7 @@ load it with PyYAML safe_load (YAML 1.1, like CloudFormation's parser) and asser
 PolicyDocument deep-equals policy.json and every AssumeRolePolicyDocument deep-equals trust.json in the
 same directory, types included (a quoted "2012-10-17" must stay a string, true must stay a boolean).
 """
+
 from __future__ import annotations
 
 import json
@@ -41,7 +42,7 @@ def strict_equal(a, b) -> bool:
     if isinstance(a, dict):
         return a.keys() == b.keys() and all(strict_equal(a[k], b[k]) for k in a)
     if isinstance(a, list):
-        return len(a) == len(b) and all(strict_equal(x, y) for x, y in zip(a, b))
+        return len(a) == len(b) and all(strict_equal(x, y) for x, y in zip(a, b, strict=True))
     return a == b
 
 

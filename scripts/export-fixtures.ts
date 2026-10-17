@@ -19,14 +19,18 @@ const cases: [string, () => ExportInput][] = [
 ];
 
 let files = 0;
+/** case id -> file names exportAll returned (scripts/check_manifest.py compares it with the directories). */
+const manifest: Record<string, string[]> = {};
 for (const [id, build] of cases) {
   const outcome = exportAll(build());
   if (!outcome.ok) throw new Error(`${id}: ${outcome.reason}`);
   const dir = path.join(outDir, id);
   mkdirSync(dir, { recursive: true });
+  manifest[id] = outcome.files.map((f) => f.filename);
   for (const f of outcome.files) {
     writeFileSync(path.join(dir, f.filename), f.content);
     files++;
   }
 }
+writeFileSync(path.join(outDir, "manifest.json"), JSON.stringify({ cases: manifest }, null, 2) + "\n");
 console.log(`Wrote ${files} files for ${cases.length} cases to ${path.relative(root, outDir)}/`);

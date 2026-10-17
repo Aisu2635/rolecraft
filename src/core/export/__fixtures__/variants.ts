@@ -52,4 +52,11 @@ export const VARIANT_CASES: Record<string, () => ExportInput> = {
       grants: [],
       managedPolicyArns: ["arn:aws:iam::aws:policy/SecurityAudit"],
     }),
+  "ec2-inline": () =>
+    build({
+      name: "ec2-inline",
+      trust: { kind: "service", service: "ec2" },
+      policyMode: "inline",
+      grants: [moduleGrant("g1", "s3", "list-read", { bucket: "data-lake", prefixes: ["reports/"] })],
+    }),
 };
