@@ -11,7 +11,7 @@ terraform {
 }
 
 variable "region" {
-  description = "AWS region of your EKS cluster(s)"
+  description = "AWS region of your EKS cluster(s) (or set TF_VAR_region)"
   type        = string
 }
 

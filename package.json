@@ -21,6 +21,7 @@
     "@cloudscape-design/design-tokens": "^3.0.114",
     "@cloudscape-design/global-styles": "^1.0.71",
     "@phosphor-icons/react": "^2.1.10",
+    "fflate": "^0.8.3",
     "lz-string": "^1.5.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",

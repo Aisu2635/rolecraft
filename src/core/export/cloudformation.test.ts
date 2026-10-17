@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import YAML from "yaml";
 import { REFERENCE_CASES } from "./__fixtures__/cases";
-import { cfnStackName, exportCloudFormation } from "./cloudformation";
+import { cfnCanDeploy, cfnDeleteCommand, cfnDeployCommand, cfnStackName, exportCloudFormation } from "./cloudformation";
 import { shortHash } from "./eks";
 import { stringifyPolicy } from "./json";
 import type { ExportInput } from "./types";
@@ -481,5 +481,43 @@ describe("exportCloudFormation", () => {
     expect(g).not.toMatch(/[ \t]$/m);
     expect(g).toContain("# aws iam attach-group-policy --group-name 'bob'");
     expect(g).toContain("\n\n# kubectl access: EKS access entries can't target IAM groups.");
+  });
+});
+
+describe("cfnCanDeploy / deploy commands", () => {
+  const variants = (): [string, ExportInput][] => {
+    const group = make("s3-group");
+    const user = make("eks-user");
+    const role = make("ec2-ssm");
+    const arnsOnly = { ...group.model, managedPolicyArns: ["arn:aws:iam::aws:policy/ReadOnlyAccess"] };
+    return [
+      ...names.map((n): [string, ExportInput] => [n, make(n)]),
+      ["group, managed ARNs only", { ...group, model: arnsOnly, result: { ...group.result, policy: null } }],
+      ["group, managed ARNs + EKS", { ...group, model: { ...arnsOnly, grants: [eksGrant()] }, result: { ...group.result, policy: null } }],
+      [
+        "user, managed ARNs + EKS",
+        { ...user, model: { ...user.model, managedPolicyArns: arnsOnly.managedPolicyArns }, result: { ...user.result, policy: null } },
+      ],
+      ["user, managed ARNs only", { ...user, model: { ...user.model, grants: [], managedPolicyArns: arnsOnly.managedPolicyArns }, result: { ...user.result, policy: null } }],
+      ["role, null trust", { ...role, result: { ...role.result, trust: null } }],
+    ];
+  };
+
+  it.each(variants())("agrees with the template: %s", (_, input) => {
+    const c = cfn(input);
+    expect(cfnCanDeploy(input)).toBe(!isCommentOnly(c));
+    if (cfnCanDeploy(input)) {
+      expect(header(c)).toContain(`# Deploy: ${cfnDeployCommand(input.model)}`);
+      expect(c).toContain(`(${cfnDeleteCommand(input.model)})`);
+    }
+  });
+
+  it("commands carry the stack name and quoted region", () => {
+    const input = make("eks-user");
+    expect(cfnDeployCommand(input.model)).toBe(
+      "aws cloudformation deploy --template-file template.yaml --stack-name deploy-bot-kubectl --capabilities CAPABILITY_NAMED_IAM --no-fail-on-empty-changeset --region 'eu-west-1'",
+    );
+    expect(cfnDeleteCommand(input.model)).toBe("aws cloudformation delete-stack --stack-name deploy-bot-kubectl --region 'eu-west-1'");
+    expect(cfnDeleteCommand(make("ec2-ssm").model)).toBe("aws cloudformation delete-stack --stack-name ec2-ops");
   });
 });

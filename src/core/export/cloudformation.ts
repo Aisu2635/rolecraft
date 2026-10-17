@@ -1,5 +1,5 @@
 import YAML, { type Scalar, type YAMLMap } from "yaml";
-import type { Trust } from "../model/model";
+import type { RoleModel, Trust } from "../model/model";
 import type { PolicyDocument } from "../types";
 import { EKS_COMMENTS, EKS_GROUP_COMMENT, EKS_VIEW_POLICY, eksClusters, shortHash } from "./eks";
 import { stringifyPolicy, type ExportFile } from "./json";
@@ -48,6 +48,30 @@ export function cfnStackName(name: string): string {
   const base = /^[a-zA-Z]/.test(s) ? s : `rolecraft-${s}`;
   // Any change (substitution, prefix, truncation) appends a hash of the original, so distinct names never share a stack.
   return base === name && base.length <= 128 ? base : `${base.slice(0, 119)}-${shortHash(name)}`;
+}
+
+const regionFlag = (model: RoleModel): string => (model.region ? ` --region ${shQuote(model.region)}` : "");
+
+/** The command that deploys template.yaml (shown in the template header and the README). */
+export function cfnDeployCommand(model: RoleModel): string {
+  // --no-fail-on-empty-changeset: re-running an unchanged deploy exits 0 instead of 255.
+  return `aws cloudformation deploy --template-file template.yaml --stack-name ${cfnStackName(model.name)} --capabilities CAPABILITY_NAMED_IAM --no-fail-on-empty-changeset${regionFlag(model)}`;
+}
+
+/** The command that deletes the stack (needed after a failed first deploy). */
+export function cfnDeleteCommand(model: RoleModel): string {
+  return `aws cloudformation delete-stack --stack-name ${cfnStackName(model.name)}${regionFlag(model)}`;
+}
+
+/**
+ * Whether template.yaml has resources to deploy. It is comment-only when there is no trust policy, or when a
+ * group/user only gets existing managed policies (CloudFormation can't attach those to an existing principal).
+ */
+export function cfnCanDeploy(input: ExportInput): boolean {
+  const { model, result } = input;
+  const trust = model.trust;
+  if (trust.kind !== "principal") return result.trust !== null;
+  return result.policy !== null || (trust.target === "user" && eksClusters(model.grants).length > 0);
 }
 
 /** Characters YAML 1.1 readers treat as line breaks or reject, which the serializer would write raw. */
@@ -253,7 +277,7 @@ export function exportCloudFormation(input: ExportInput): ExportFile {
   let built: Built;
   if (trust.kind === "principal") {
     built = principalTemplate(input, trust, clusters);
-    if (Object.keys(built.resources).length === 0) {
+    if (!cfnCanDeploy(input)) {
       return finish([
         HEADER,
         DO_NOT_DEPLOY,
@@ -274,16 +298,13 @@ export function exportCloudFormation(input: ExportInput): ExportFile {
     return finish([HEADER, DO_NOT_DEPLOY, NO_TRUST]);
   }
 
-  const region = model.region ? ` --region ${shQuote(model.region)}` : "";
   const hasEks = Object.values(built.resources).some((r) => r.Type === "AWS::EKS::AccessEntry");
-  const stack = cfnStackName(model.name);
   const head = [
     HEADER,
     summary,
-    // --no-fail-on-empty-changeset: re-running an unchanged deploy exits 0 instead of 255.
-    `# Deploy: aws cloudformation deploy --template-file template.yaml --stack-name ${stack} --capabilities CAPABILITY_NAMED_IAM --no-fail-on-empty-changeset${region}`,
+    `# Deploy: ${cfnDeployCommand(model)}`,
     // A failed first deploy leaves the stack in ROLLBACK_COMPLETE, which can't be updated.
-    `# If the first deploy fails, delete the stack (aws cloudformation delete-stack --stack-name ${stack}${region}) before deploying again.`,
+    `# If the first deploy fails, delete the stack (${cfnDeleteCommand(model)}) before deploying again.`,
     ...(hasEks && !model.region ? [EKS_REGION] : []),
   ];
   for (const block of built.notes) head.push("", ...block);

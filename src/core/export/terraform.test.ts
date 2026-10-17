@@ -92,7 +92,7 @@ describe("exportTerraform", () => {
   it("provider: no region and EKS clusters asks for the region", () => {
     const c = exportTerraform(make("eks-kubectl")).content;
     expect(c).toContain(
-      '}\n\nvariable "region" {\n  description = "AWS region of your EKS cluster(s)"\n  type        = string\n}\n\nprovider "aws" {\n  region = var.region\n}\n',
+      '}\n\nvariable "region" {\n  description = "AWS region of your EKS cluster(s) (or set TF_VAR_region)"\n  type        = string\n}\n\nprovider "aws" {\n  region = var.region\n}\n',
     );
     expect(c).not.toContain("IAM is global");
   });
