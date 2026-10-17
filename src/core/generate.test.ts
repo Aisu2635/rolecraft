@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import textractRaw from "./__fixtures__/aws/textract.json";
 import ec2Full from "../../public/data/svc/ec2.json";
@@ -236,5 +237,30 @@ describe("generate module wiring", () => {
     });
     const r = generate(model([grant({ service: "textract", module: "m" })]), catalog, { m: b });
     expect(r.policy?.Statement[0]?.Sid).toBe("X");
+  });
+});
+
+describe("username warning dedupe", () => {
+  const s3 = JSON.parse(readFileSync("public/data/svc/s3.json", "utf8")) as SlimService;
+  const s3catalog = createCatalog([s3]);
+  const s3grant: Grant = {
+    id: "g1",
+    service: "s3",
+    module: "s3",
+    scope: { type: "module", data: { bucket: "data-lake", prefixes: ["home/${aws:username}/"] } },
+    access: { type: "preset", preset: "read" },
+  };
+  it("service trust yields exactly one L_USERNAME_IN_ROLE and no W_S3_USERNAME_VAR", () => {
+    const r = generate(model([s3grant]), s3catalog);
+    expect(ids(r.issues).filter((x) => x === "L_USERNAME_IN_ROLE")).toHaveLength(1);
+    expect(ids(r.issues)).not.toContain("W_S3_USERNAME_VAR");
+  });
+  it("principal trust yields neither", () => {
+    const r = generate(
+      model([s3grant], { trust: { kind: "principal", target: "group", name: "devs" } }),
+      s3catalog,
+    );
+    expect(ids(r.issues)).not.toContain("L_USERNAME_IN_ROLE");
+    expect(ids(r.issues)).not.toContain("W_S3_USERNAME_VAR");
   });
 });

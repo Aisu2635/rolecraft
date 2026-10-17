@@ -1,3 +1,4 @@
+import { matchableTypes } from "../arn";
 import { isValidArnSyntax } from "../arn-syntax";
 import type { Catalog } from "../catalog/catalog";
 import { globMatch } from "../glob";
@@ -53,7 +54,7 @@ function resolve(granted: string, catalog: Catalog): Resolved[] | "all" {
   if (!/[*?]/.test(granted)) {
     const svc = catalog.getService(granted.slice(0, colon).toLowerCase());
     const hit = svc ? actionIndex(svc).get(granted.slice(colon + 1).toLowerCase()) : undefined;
-    return [hit ? { name: granted, level: hit.level } : { name: granted }];
+    return [hit && svc ? { name: `${svc.key}:${hit.name}`, level: hit.level } : { name: granted }];
   }
   const svc = catalog.getService(granted.slice(0, colon).toLowerCase());
   if (!svc) return [];
@@ -109,7 +110,7 @@ function lintStatement(s: Statement, index: number, catalog: Catalog): Issue[] {
       else {
         for (const a of r) {
           const bare = a.name.slice(a.name.indexOf(":") + 1);
-          if (a.level === "Permissions management" || /^(Delete|Terminate)/.test(bare)) names.push(a.name);
+          if (a.level === "Permissions management" || /^(delete|terminate)/i.test(bare)) names.push(a.name);
         }
       }
     }
@@ -141,7 +142,7 @@ function lintStatement(s: Statement, index: number, catalog: Catalog): Issue[] {
     issues.push({
       id: "L_SENSITIVE",
       severity: "warning",
-      message: `${list(sensitive)} are sensitive permissions that can change IAM, assume other roles, or manage keys and accounts. Confirm this role needs them.`,
+      message: `${list(sensitive)} ${new Set(sensitive).size === 1 ? "is a sensitive permission" : "are sensitive permissions"} that can change IAM, assume other roles, or manage keys and accounts. Confirm this role needs them.`,
       path,
     });
   }
@@ -178,15 +179,17 @@ function lintGithubSaml(trust: PolicyDocument): Issue[] {
   return issues;
 }
 
-function lintUnusedArns(model: RoleModel, policy: PolicyDocument): Issue[] {
+function lintUnusedArns(model: RoleModel, policy: PolicyDocument, catalog: Catalog): Issue[] {
   const used = new Set(policy.Statement.flatMap((s) => strs(s.Resource)));
   const issues: Issue[] = [];
   for (const g of model.grants) {
-    if (g.scope.type !== "arns") continue;
+    if (g.scope.type !== "arns" || g.scope.arns.some((a) => a.trim() === "*")) continue;
+    const svc = catalog.getService(g.service);
+    if (!svc) continue;
     const seen = new Set<string>();
     for (const raw of g.scope.arns) {
       const arn = raw.trim();
-      if (arn === "" || arn === "*" || seen.has(arn) || !isValidArnSyntax(arn)) continue;
+      if (arn === "" || arn === "*" || seen.has(arn) || !isValidArnSyntax(arn) || matchableTypes(arn, svc).length === 0) continue;
       seen.add(arn);
       if (!used.has(arn)) {
         issues.push({
@@ -219,7 +222,7 @@ export function lint(
             "${aws:username} is empty for role sessions, so these statements grant nothing to this role. Use ${aws:userid} or ${aws:PrincipalTag/<key>}.",
         });
       }
-      issues.push(...lintUnusedArns(model, policy));
+      issues.push(...lintUnusedArns(model, policy, catalog));
     }
     if (trust) issues.push(...lintGithubSaml(trust));
     return issues;

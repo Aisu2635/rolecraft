@@ -169,7 +169,7 @@ describe("L_UNUSED_ARN", () => {
     const used = "arn:aws:ec2:*:*:vpc/vpc-1";
     const unused = "arn:aws:ec2:*:*:subnet/subnet-1";
     const p = doc(allow("ec2:DeleteVpc", used));
-    const r = run(p, { grants: [grant([used, unused, " ", "*"])] });
+    const r = run(p, { grants: [grant([used, unused, " "])] });
     const hits = r.filter((x) => x.id === "L_UNUSED_ARN");
     expect(hits).toHaveLength(1);
     expect(hits[0]?.severity).toBe("info");
@@ -218,5 +218,34 @@ describe("generate integration", () => {
     );
     expect(ids(r.issues)).toContain("L_DESTRUCTIVE_STAR");
     expect(ids(r.issues)).toContain("L_SENSITIVE");
+  });
+});
+
+describe("review fixes", () => {
+  it("L_DESTRUCTIVE_STAR matches case-insensitively and reports canonical name", () => {
+    const i = run(doc(allow("iam:deleterole", "*"))).find((x) => x.id === "L_DESTRUCTIVE_STAR");
+    expect(i?.message).toContain("iam:DeleteRole");
+    expect(ids(run(doc(allow("nosuch:terminatething", "*"))))).toContain("L_DESTRUCTIVE_STAR");
+  });
+  it("L_SENSITIVE grammar follows the count", () => {
+    const one = run(doc(allow("iam:CreateRole", "arn:aws:iam::1:role/x"))).find((x) => x.id === "L_SENSITIVE");
+    expect(one?.message).toContain("iam:CreateRole is a sensitive permission");
+    const many = run(doc(allow(["iam:CreateRole", "iam:PutRolePolicy"], "arn:aws:iam::1:role/x"))).find(
+      (x) => x.id === "L_SENSITIVE",
+    );
+    expect(many?.message).toContain("are sensitive permissions");
+  });
+  it("L_UNUSED_ARN skips grants containing * and foreign ARNs", () => {
+    const g = (arns: string[]): Grant => ({
+      id: "g1",
+      service: "ec2",
+      scope: { type: "arns", arns },
+      access: { type: "actions", actions: ["DescribeVpcs"] },
+    });
+    const p = doc(allow("ec2:DeleteVpc", "*"));
+    expect(ids(run(p, { grants: [g(["*", "arn:aws:ec2:*:*:vpc/v-1"])] }))).not.toContain("L_UNUSED_ARN");
+    expect(ids(run(p, { grants: [g(["arn:aws:s3:::bucket"])] }))).not.toContain("L_UNUSED_ARN");
+    const unknownSvc: Grant = { ...g(["arn:aws:ec2:*:*:vpc/v-1"]), service: "nosuch" };
+    expect(ids(run(p, { grants: [unknownSvc] }))).not.toContain("L_UNUSED_ARN");
   });
 });

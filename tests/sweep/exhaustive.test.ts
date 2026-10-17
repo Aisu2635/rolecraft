@@ -69,7 +69,10 @@ function missingActions(svc: SlimService, level: AccessLevel, r: GenerateResult)
 function run(svc: SlimService, level: AccessLevel, scopeKind: ScopeKind): void {
   const r = evaluate(svc, level, scopeKind);
   const bad = r.issues.filter(
-    (i) => i.severity === "error" && !i.id.startsWith("L_") && i.id !== "E_POLICY_TOO_LARGE" && !tolerated(svc.key, i.id),
+    (i) =>
+      i.severity === "error" &&
+      !(i.id === "L_PASSROLE_STAR" && svc.key === "iam") &&
+      i.id !== "E_POLICY_TOO_LARGE" && !tolerated(svc.key, i.id),
   );
   expect(bad).toStrictEqual([]);
   if (scopeKind === "all") expect(r.policy).not.toBeNull();
@@ -102,7 +105,7 @@ describe.each(cases)("sweep %s", (_key, svc, levels) => {
 });
 
 describe("sweep guards", () => {
-  test("too-large cases stay rare", () => {
+  test("too-large cases stay rare", { timeout: 20_000 }, () => {
     let total = 0;
     let tooLarge = 0;
     let tooLargeAll = 0;

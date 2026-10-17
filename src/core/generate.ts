@@ -156,5 +156,7 @@ export function generate(
     });
   }
 
-  return { policy, trust, issues: sortIssues(issues), sizes };
+  // The trust-aware lint rule L_USERNAME_IN_ROLE supersedes the module-level warning.
+  const final = issues.filter((i) => i.id !== "W_S3_USERNAME_VAR");
+  return { policy, trust, issues: sortIssues(final), sizes };
 }
