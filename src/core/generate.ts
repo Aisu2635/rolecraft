@@ -1,5 +1,6 @@
 import type { BuildContext } from "./arn";
 import type { Catalog } from "./catalog/catalog";
+import { defaultBuilders } from "./engine/modules/registry";
 import { buildGenericStatements, type BuildResult } from "./engine/generic";
 import { dedupeSids } from "./engine/sid";
 import { roleModelSchema, type Grant, type RoleModel } from "./model/model";
@@ -39,7 +40,7 @@ function sortIssues(issues: Issue[]): Issue[] {
 export function generate(
   model: RoleModel,
   catalog: Catalog,
-  builders: Record<string, GrantBuilder> = {},
+  builders: Record<string, GrantBuilder> = defaultBuilders(),
 ): GenerateResult {
   const parsed = roleModelSchema.safeParse(model);
   if (!parsed.success) {

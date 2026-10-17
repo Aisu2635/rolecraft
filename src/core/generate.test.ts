@@ -213,3 +213,28 @@ describe("generate on malformed input", () => {
     expect(r.issues.find((x) => x.id === "E_INTERNAL")?.grantId).toBe("g1");
   });
 });
+
+describe("generate module wiring", () => {
+  it("unknown module still yields E_UNKNOWN_MODULE", () => {
+    const r = generate(
+      model([
+        grant({
+          service: "textract",
+          module: "nosuch",
+          scope: { type: "module", data: {} },
+          access: { type: "preset", preset: "x" },
+        }),
+      ]),
+      catalog,
+    );
+    expect(ids(r.issues)).toContain("E_UNKNOWN_MODULE");
+  });
+  it("explicit builders override defaults", () => {
+    const b: GrantBuilder = () => ({
+      statements: [{ Sid: "X", Effect: "Allow", Action: "textract:AnalyzeDocument", Resource: "*" }],
+      issues: [],
+    });
+    const r = generate(model([grant({ service: "textract", module: "m" })]), catalog, { m: b });
+    expect(r.policy?.Statement[0]?.Sid).toBe("X");
+  });
+});
