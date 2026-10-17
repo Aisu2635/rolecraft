@@ -1,0 +1,207 @@
+import { describe, expect, it } from "vitest";
+import { REFERENCE_CASES } from "./__fixtures__/cases";
+import { exportCliPowerShell } from "./cli-ps";
+import { stringifyPolicy } from "./json";
+import type { ExportInput } from "./types";
+
+const names = Object.keys(REFERENCE_CASES);
+const make = (n: string): ExportInput => (REFERENCE_CASES[n] as () => ExportInput)();
+const eksGrant = (cluster: unknown) => ({
+  id: "k",
+  service: "eks",
+  module: "eks",
+  scope: { type: "module" as const, data: { cluster } },
+  access: { type: "preset" as const, preset: "kubectl" },
+});
+
+describe("exportCliPowerShell", () => {
+  it.each(names)("snapshot: %s", async (n) => {
+    const f = exportCliPowerShell(make(n));
+    const file = n === "s3-group" ? "attach-policy.ps1" : "create-role.ps1";
+    expect(f.filename).toBe(file);
+    expect(f.language).toBe("powershell");
+    await expect(f.content).toMatchFileSnapshot(`./__snapshots__/${n}/${file}`);
+  });
+
+  it.each(names)("structure: %s", (n) => {
+    const input = make(n);
+    const c = exportCliPowerShell(input).content;
+    expect(c.startsWith("$ErrorActionPreference = 'Stop'\n$env:AWS_PAGER = ''\n")).toBe(true);
+    expect(c).not.toContain("\r");
+    expect(c.endsWith("\n") && !c.endsWith("\n\n")).toBe(true);
+    expect(c).not.toMatch(/Set-Content|Out-File/);
+    expect(c).not.toMatch(/&&|\|\|/);
+    const wrap = (file: string, json: string): string =>
+      `[System.IO.File]::WriteAllText((Join-Path $PWD '${file}'), @'\n${json}'@)\n`;
+    if (input.result.policy) expect(c).toContain(wrap("policy.json", stringifyPolicy(input.result.policy)));
+    if (input.result.trust && input.model.trust.kind !== "principal") {
+      expect(c).toContain(wrap("trust.json", stringifyPolicy(input.result.trust)));
+    }
+  });
+
+  it.each(names)("every aws call is followed by an exit-code check: %s", (n) => {
+    const lines = exportCliPowerShell(make(n)).content.split("\n");
+    let calls = 0;
+    lines.forEach((l, i) => {
+      if (/^\s*(\$\w+ = )?aws /.test(l)) {
+        calls++;
+        expect(lines[i + 1]).toMatch(/^\s*if \(\$LASTEXITCODE -ne 0\) \{ throw "aws failed: [\w -]+" \}$/);
+      }
+    });
+    expect(calls).toBeGreaterThan(0);
+  });
+
+  it.each(names)("here-string terminators sit at column 0 and JSON never contains one: %s", (n) => {
+    const input = make(n);
+    for (const doc of [input.result.policy, input.result.trust]) {
+      if (doc) expect(stringifyPolicy(doc)).not.toMatch(/^'@/m);
+    }
+    const lines = exportCliPowerShell(input).content.split("\n");
+    const opens = lines.filter((l) => l.endsWith("@'")).length;
+    const closes = lines.filter((l) => l.startsWith("'@")).length;
+    expect(closes).toBe(opens);
+    expect(lines.filter((l) => l.startsWith("'@")).every((l) => l === "'@)")).toBe(true);
+  });
+
+  it("github checks for the OIDC provider before creating it", () => {
+    const c = exportCliPowerShell(make("github-deploy")).content;
+    expect(c).toContain("$existing = aws iam list-open-id-connect-providers --query ");
+    expect(c).toContain("if (-not $existing) {");
+    expect(c).toContain(
+      "  aws iam create-open-id-connect-provider --url https://token.actions.githubusercontent.com --client-id-list sts.amazonaws.com | Out-Null\n  if ($LASTEXITCODE -ne 0)",
+    );
+  });
+  it("ec2 cases create instance profile; others do not", () => {
+    for (const n of ["ec2-ssm", "eks-kubectl"]) {
+      const c = exportCliPowerShell(make(n)).content;
+      expect(c).toContain("create-instance-profile");
+      expect(c).toContain("add-role-to-instance-profile");
+    }
+    expect(exportCliPowerShell(make("lambda-api")).content).not.toContain("instance-profile");
+  });
+  it("s3-group attaches to the group and creates no role", () => {
+    const c = exportCliPowerShell(make("s3-group")).content;
+    expect(c).toContain("attach-group-policy");
+    expect(c).not.toContain("create-role");
+  });
+  it("managed ARNs are attached; inline mode uses put-role-policy", () => {
+    expect(exportCliPowerShell(make("ec2-ssm")).content).toContain(
+      "--policy-arn 'arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore'",
+    );
+    const c = exportCliPowerShell(make("lambda-api")).content;
+    expect(c).toContain("put-role-policy");
+    expect(c).not.toContain("create-policy");
+  });
+  it("eks access entries; region only when set", () => {
+    const input = make("eks-kubectl");
+    const c = exportCliPowerShell(input).content;
+    expect(c).toContain("aws eks create-access-entry --cluster-name 'prod' --principal-arn \"$RoleArn\" | Out-Null\n");
+    expect(c).toContain("AmazonEKSViewPolicy --access-scope type=cluster | Out-Null\n");
+    const r = exportCliPowerShell({ ...input, model: { ...input.model, region: "eu-west-1" } }).content;
+    expect(r).toContain("--cluster-name 'prod' --principal-arn \"$RoleArn\" --region 'eu-west-1' | Out-Null");
+  });
+  it("eks under group trust emits a comment, no aws eks calls", () => {
+    const input = make("s3-group");
+    const c = exportCliPowerShell({ ...input, model: { ...input.model, grants: [eksGrant("prod")] } }).content;
+    expect(c).toContain(
+      "EKS access entries can't target IAM groups. Ask the cluster admin to add an access entry for each user, or use a role instead.",
+    );
+    expect(c).not.toContain("aws eks");
+  });
+  it("ignores malformed or duplicate eks grants", () => {
+    const input = make("eks-kubectl");
+    const g = input.model.grants[0]!;
+    const bad = [
+      { ...g, id: "a", scope: { type: "all" as const } },
+      { ...g, id: "b", scope: { type: "module" as const, data: null } },
+      { ...g, id: "c", scope: { type: "module" as const, data: { cluster: 5 } } },
+      { ...g, id: "d", access: { type: "preset" as const, preset: "describe" } },
+      { ...g, id: "e", access: { type: "levels" as const, levels: [] } },
+      { ...g, id: "f", module: "s3" },
+      g,
+      { ...g, id: "dup" },
+    ];
+    const c = exportCliPowerShell({ ...input, model: { ...input.model, grants: bad } }).content;
+    expect(c.match(/create-access-entry --cluster/g)).toHaveLength(1);
+  });
+  it("principal user, inline and managed ARNs", () => {
+    const input = make("s3-group");
+    const base = {
+      ...input.model,
+      trust: { kind: "principal" as const, target: "user" as const, name: "bob" },
+      managedPolicyArns: ["arn:aws:iam::aws:policy/ReadOnlyAccess"],
+    };
+    const inline = exportCliPowerShell({ ...input, model: { ...base, policyMode: "inline" } }).content;
+    expect(inline).toContain("put-user-policy --user-name $PrincipalName");
+    expect(inline).toContain(
+      "attach-user-policy --user-name $PrincipalName --policy-arn 'arn:aws:iam::aws:policy/ReadOnlyAccess'",
+    );
+    expect(exportCliPowerShell({ ...input, model: base }).content).toContain(
+      "attach-user-policy --user-name $PrincipalName --policy-arn $PolicyArn",
+    );
+  });
+  it("managed ARNs only (no policy)", () => {
+    const input = make("ec2-ssm");
+    const c = exportCliPowerShell({ ...input, result: { ...input.result, policy: null } }).content;
+    expect(c).not.toContain("policy.json");
+    expect(c).toContain("attach-role-policy");
+    const g = make("s3-group");
+    const gc = exportCliPowerShell({ ...g, result: { ...g.result, policy: null } }).content;
+    expect(gc).not.toContain("create-policy");
+  });
+  it("never throws when trust is null for a role", () => {
+    const input = make("ec2-ssm");
+    const c = exportCliPowerShell({ ...input, result: { ...input.result, trust: null } }).content;
+    expect(c).not.toContain("create-role");
+    expect(c).toContain("No trust policy");
+    expect(c).toContain("Nothing was created");
+    const np = exportCliPowerShell({ ...input, result: { ...input.result, trust: null, policy: null } }).content;
+    expect(np).not.toContain("policy.json");
+  });
+  it("reliability: pager, role wait, quiet output, auth mode note", () => {
+    const c = exportCliPowerShell(make("eks-kubectl")).content;
+    expect(c).toContain("aws iam wait role-exists --role-name $RoleName\n");
+    expect(c.indexOf("wait role-exists")).toBeLessThan(c.indexOf("create-access-entry"));
+    expect(c).toContain("authentication mode must be API or API_AND_CONFIG_MAP");
+    for (const cmd of ["iam create-role", "iam create-instance-profile", "eks create-access-entry", "eks associate-access-policy"]) {
+      const line = c.split("\n").find((l) => l.startsWith(`aws ${cmd}`));
+      expect(line?.endsWith(" | Out-Null")).toBe(true);
+    }
+  });
+  it("eks for principal user uses the caller account and a concatenated quoted user ARN", () => {
+    const input = make("s3-group");
+    const model = {
+      ...input.model,
+      region: "eu-west-1",
+      trust: { kind: "principal" as const, target: "user" as const, name: "o'brien" },
+      grants: [eksGrant("prod")],
+    };
+    const c = exportCliPowerShell({ ...input, model }).content;
+    expect(c).toContain("$AccountId = aws sts get-caller-identity --query Account --output text\n");
+    expect(c).toContain(String.raw`$PrincipalArn = "arn:aws:iam::${"$"}{AccountId}:user/" + 'o''brien'`);
+    expect(c).toContain(
+      `aws eks create-access-entry --cluster-name 'prod' --principal-arn "$PrincipalArn" --region 'eu-west-1' | Out-Null`,
+    );
+    expect(c).toContain("associate-access-policy");
+    expect(c).not.toContain("wait role-exists");
+  });
+  it("hostile values are never interpolated unquoted", () => {
+    const input = make("eks-kubectl");
+    const evil = "x'’; $(id) `whoami`; calc\n$env:USERNAME";
+    const model = {
+      ...input.model,
+      name: evil,
+      region: evil,
+      managedPolicyArns: [evil],
+      grants: [{ ...input.model.grants[0]!, scope: { type: "module" as const, data: { cluster: evil } } }],
+    };
+    const c = exportCliPowerShell({ ...input, model }).content;
+    const q = "'x''’’; $(id) `whoami`; calc\n$env:USERNAME'";
+    expect(c).toContain(`$RoleName = ${q}\n`);
+    const rest = c.replaceAll(q, "Q");
+    expect(rest).not.toContain("whoami");
+    expect(rest).not.toContain("$(id)");
+    expect(rest).not.toContain("calc");
+    expect(rest).not.toContain("USERNAME");
+  });
+});
