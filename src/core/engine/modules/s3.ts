@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { hasOnlyAllowedPolicyVariables } from "../../arn-syntax";
 import type { Grant } from "../../model/model";
 import type { ConditionBlock, Issue, Statement } from "../../types";
 import { pascal } from "../sid";
@@ -33,6 +34,10 @@ export const s3DataSchema = z
         z
           .string()
           .max(1024, "prefix is too long")
+          .refine(
+            (p) => hasOnlyAllowedPolicyVariables(p),
+            "prefix has an unsupported ${...} variable",
+          )
           .refine(
             (p) => !hasBadChar(p),
             "prefix must not contain *, ?, quotes, spaces or control characters",
@@ -133,6 +138,16 @@ function build(
       });
     }
     prefixes = [""];
+  }
+
+  if (prefixes.some((p) => p.includes("${aws:username}"))) {
+    issues.push({
+      id: "W_S3_USERNAME_VAR",
+      severity: "warning",
+      grantId: grant.id,
+      message:
+        "${aws:username} only works when this policy is attached to an IAM user or group. For roles (EC2, Lambda, GitHub, SSO), use ${aws:userid} or ${aws:PrincipalTag/<key>} instead.",
+    });
   }
 
   const statements: Statement[] = [];

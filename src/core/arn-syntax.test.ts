@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isValidArnSyntax } from "./arn-syntax";
+import { isValidArnSyntax, hasOnlyAllowedPolicyVariables } from "./arn-syntax";
 
 describe("isValidArnSyntax", () => {
   it.each([
@@ -26,5 +26,21 @@ describe("isValidArnSyntax", () => {
     "arn:aws:logs:us-east-1:123456789012:log-group:/aws/lambda/fn:*",
   ])("accepts %j", (arn) => {
     expect(isValidArnSyntax(arn)).toBe(true);
+  });
+});
+
+describe("hasOnlyAllowedPolicyVariables", () => {
+  it("accepts allowed variables and plain text", () => {
+    expect(hasOnlyAllowedPolicyVariables("a/b/")).toBe(true);
+    expect(
+      hasOnlyAllowedPolicyVariables("h/${aws:username}/${aws:userid}/"),
+    ).toBe(true);
+    expect(hasOnlyAllowedPolicyVariables("t/${aws:PrincipalTag/team}/")).toBe(
+      true,
+    );
+  });
+  it("rejects unknown or incomplete variables", () => {
+    expect(hasOnlyAllowedPolicyVariables("h/${foo}/")).toBe(false);
+    expect(hasOnlyAllowedPolicyVariables("a${b/")).toBe(false);
   });
 });

@@ -15,3 +15,8 @@ export function isValidArnSyntax(arn: string): boolean {
   if (parts[1] !== "aws" && parts[1] !== "*") return false;
   return parts.slice(5).join(":").length > 0;
 }
+
+/** True when every "${" in `s` begins a complete, allowed IAM policy variable. */
+export function hasOnlyAllowedPolicyVariables(s: string): boolean {
+  return !s.replace(POLICY_VARIABLE, "V").includes("${");
+}

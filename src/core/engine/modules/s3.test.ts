@@ -98,6 +98,7 @@ describe("s3 module", () => {
   it("normalizes reports and /reports/ to reports/ and dedupes", () => {
     for (const p of [["reports"], ["/reports/"], ["reports", "/reports/"]]) {
       const r = run("read", { bucket: "data-lake", prefixes: p });
+      expect(valid(r.statements)).toStrictEqual([]);
       expect(r.statements).toStrictEqual([
         {
           Sid: "S3ReadObjects",
@@ -170,6 +171,41 @@ describe("s3 module", () => {
       "arn:aws:s3:::data-lake/home/${aws:username}/*",
     );
     expect(valid(r.statements)).toStrictEqual([]);
+  });
+
+  it("warns that ${aws:username} fails for roles but still emits", () => {
+    const r = run("read", {
+      bucket: "data-lake",
+      prefixes: ["home/${aws:username}/"],
+    });
+    expect(r.statements).toHaveLength(1);
+    expect(r.issues).toHaveLength(1);
+    expect(r.issues[0]).toStrictEqual({
+      id: "W_S3_USERNAME_VAR",
+      severity: "warning",
+      grantId: "g1",
+      message:
+        "${aws:username} only works when this policy is attached to an IAM user or group. For roles (EC2, Lambda, GitHub, SSO), use ${aws:userid} or ${aws:PrincipalTag/<key>} instead.",
+    });
+  });
+
+  it("accepts userid and PrincipalTag variables; no warning", () => {
+    for (const p of ["home/${aws:userid}/", "team/${aws:PrincipalTag/team}/"]) {
+      const r = run("list-read", { bucket: "data-lake", prefixes: [p] });
+      expect(r.issues).toStrictEqual([]);
+      expect(valid(r.statements)).toStrictEqual([]);
+    }
+  });
+
+  it("rejects unknown or incomplete policy variables", () => {
+    for (const p of ["home/${foo}/", "a${b/"]) {
+      const r = run("read", { bucket: "data-lake", prefixes: [p] });
+      expect(r.statements).toStrictEqual([]);
+      expect(r.issues[0]).toMatchObject({
+        id: "E_MODULE_DATA",
+        path: "data.prefixes[0]",
+      });
+    }
   });
 
   it("upload-only has no ListBucket", () => {
