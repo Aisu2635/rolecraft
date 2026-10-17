@@ -2,7 +2,8 @@ import type { BuildContext } from "./arn";
 import type { Catalog } from "./catalog/catalog";
 import { buildGenericStatements, type BuildResult } from "./engine/generic";
 import { dedupeSids } from "./engine/sid";
-import type { Grant, RoleModel } from "./model/model";
+import { roleModelSchema, type Grant, type RoleModel } from "./model/model";
+import { formatPath } from "./validate/schema";
 import { buildTrust } from "./trust/trust";
 import type { Issue, PolicyDocument, SlimService, Statement } from "./types";
 import {
@@ -40,6 +41,23 @@ export function generate(
   catalog: Catalog,
   builders: Record<string, GrantBuilder> = {},
 ): GenerateResult {
+  const parsed = roleModelSchema.safeParse(model);
+  if (!parsed.success) {
+    const first = parsed.error.issues[0];
+    return {
+      policy: null,
+      trust: null,
+      sizes: { policy: 0, trust: 0 },
+      issues: [
+        {
+          id: "V_SCHEMA",
+          severity: "error",
+          message: `The role model is malformed: ${first?.message ?? "invalid"}.`,
+          path: first ? formatPath(first.path) : "",
+        },
+      ],
+    };
+  }
   const issues: Issue[] = [...validateModelValues(model)];
   const ctx: BuildContext = {
     partition: model.partition,
@@ -48,7 +66,13 @@ export function generate(
   };
 
   const statements: Statement[] = [];
-  for (const grant of model.grants) {
+  const internal = (grantId?: string): Issue => ({
+    id: "E_INTERNAL",
+    severity: "error",
+    message: "Something went wrong building this permission. Please report it.",
+    ...(grantId !== undefined ? { grantId } : {}),
+  });
+  const buildGrant = (grant: Grant): void => {
     const svc = catalog.getService(grant.service);
     if (!svc) {
       issues.push({
@@ -57,7 +81,7 @@ export function generate(
         message: `Unknown service "${grant.service}".`,
         grantId: grant.id,
       });
-      continue;
+      return;
     }
     let build: GrantBuilder = buildGenericStatements;
     if (grant.module !== undefined) {
@@ -69,21 +93,19 @@ export function generate(
           message: `Unknown service module "${grant.module}".`,
           grantId: grant.id,
         });
-        continue;
+        return;
       }
       build = b;
     }
+    const r = build(grant, svc, ctx);
+    statements.push(...r.statements);
+    issues.push(...r.issues);
+  };
+  for (const grant of model.grants) {
     try {
-      const r = build(grant, svc, ctx);
-      statements.push(...r.statements);
-      issues.push(...r.issues);
+      buildGrant(grant);
     } catch {
-      issues.push({
-        id: "E_INTERNAL",
-        severity: "error",
-        message: "Something went wrong building this permission. Please report it.",
-        grantId: grant.id,
-      });
+      issues.push(internal(grant.id));
     }
   }
 
@@ -99,10 +121,16 @@ export function generate(
     issues.push(...validateIdentityPolicy(policy, catalog));
   }
 
-  const t = buildTrust(model.trust, ctx);
-  issues.push(...t.issues);
-  const trust = t.doc;
-  if (trust) issues.push(...validateTrustPolicy(trust));
+  let trust: PolicyDocument | null = null;
+  try {
+    const t = buildTrust(model.trust, ctx);
+    issues.push(...t.issues);
+    trust = t.doc;
+    if (trust) issues.push(...validateTrustPolicy(trust));
+  } catch {
+    trust = null;
+    issues.push(internal());
+  }
 
   const sizes = {
     policy: policy ? policySize(policy) : 0,

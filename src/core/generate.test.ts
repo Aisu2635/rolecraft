@@ -131,7 +131,8 @@ describe("generate", () => {
   it("flags oversized trust policy", () => {
     const r = generate(
       model([grant({ service: "textract" })], {
-        trust: { kind: "account", accountId: "123456789012", externalId: "x".repeat(2100) },
+        accountId: "123456789012",
+        trust: { kind: "github", owner: "o", repo: "r", ref: { type: "branch", value: "x".repeat(2000) } },
       }),
       catalog,
     );
@@ -184,5 +185,31 @@ describe("generate", () => {
       { x: b },
     );
     expect(seen).toEqual({ partition: "aws", accountId: undefined, region: undefined });
+  });
+});
+
+describe("generate on malformed input", () => {
+  const bad = (over: Record<string, unknown>) =>
+    ({ ...createEmptyModel(), ...over }) as unknown as RoleModel;
+  it.each([
+    ["grants undefined", { grants: undefined }],
+    ["trust undefined", { trust: undefined }],
+    ["grants [null]", { grants: [null] }],
+  ])("%s does not throw and reports V_SCHEMA", (_n, over) => {
+    let r: ReturnType<typeof generate> | undefined;
+    expect(() => {
+      r = generate(bad(over), catalog);
+    }).not.toThrow();
+    expect(r?.policy).toBeNull();
+    expect(r?.trust).toBeNull();
+    expect(r?.sizes).toEqual({ policy: 0, trust: 0 });
+    const i = r?.issues.find((x) => x.id === "V_SCHEMA");
+    expect(i?.severity).toBe("error");
+    expect(i?.path).toBeTruthy();
+  });
+  it("guards a throwing catalog lookup", () => {
+    const boom = { ...catalog, getService: () => { throw new Error("x"); } };
+    const r = generate(model([grant({ service: "textract" })]), boom as unknown as typeof catalog);
+    expect(r.issues.find((x) => x.id === "E_INTERNAL")?.grantId).toBe("g1");
   });
 });
