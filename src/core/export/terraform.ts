@@ -1,6 +1,6 @@
 import type { Trust } from "../model/model";
 import type { PolicyDocument } from "../types";
-import { EKS_COMMENTS, EKS_GROUP_COMMENT, EKS_VIEW_POLICY, eksClusters } from "./eks";
+import { EKS_COMMENTS, EKS_GROUP_COMMENT, EKS_VIEW_POLICY, eksClusters, shortHash } from "./eks";
 import { stringifyPolicy, type ExportFile } from "./json";
 import { hclString, tfLabel, type ExportInput } from "./types";
 
@@ -66,10 +66,19 @@ function preamble(region: string | undefined, needsEksRegion: boolean): string[]
   return out;
 }
 
+/**
+ * Per-cluster label (not a position), so adding, removing or reordering clusters never replaces another
+ * cluster's access entry (EKS allows one per principal per cluster). A hash keeps lossy labels distinct.
+ */
+function eksLabel(label: string, cluster: string): string {
+  const l = tfLabel(cluster);
+  return `${label}_eks_${l === cluster ? l : `${l}_${shortHash(cluster)}`}`;
+}
+
 /** Access entry + View policy association per cluster; `lead` lines are prefixed to the first block. */
 function eksResources(label: string, clusters: string[], principalArn: string, lead: readonly string[]): string[] {
   return clusters.flatMap((c, i) => {
-    const entry = `${label}_eks_${i + 1}`;
+    const entry = eksLabel(label, c);
     const entryBlock = resource("aws_eks_access_entry", entry, [
       ["cluster_name", hclString(c)],
       ["principal_arn", principalArn],

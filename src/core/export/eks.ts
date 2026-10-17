@@ -25,3 +25,30 @@ export function eksClusters(grants: Grant[]): string[] {
   }
   return out;
 }
+
+/** FNV-1a 32-bit hash of the UTF-8 bytes of `s`, as 8 lowercase hex characters (stable short suffix for ids). */
+export function shortHash(s: string): string {
+  let h = 0x811c9dc5;
+  const byte = (b: number): void => {
+    h = Math.imul(h ^ b, 0x01000193) >>> 0;
+  };
+  for (const c of s) {
+    const cp = c.codePointAt(0) as number;
+    if (cp < 0x80) {
+      byte(cp);
+    } else if (cp < 0x800) {
+      byte(0xc0 | (cp >> 6));
+      byte(0x80 | (cp & 0x3f));
+    } else if (cp < 0x10000) {
+      byte(0xe0 | (cp >> 12));
+      byte(0x80 | ((cp >> 6) & 0x3f));
+      byte(0x80 | (cp & 0x3f));
+    } else {
+      byte(0xf0 | (cp >> 18));
+      byte(0x80 | ((cp >> 12) & 0x3f));
+      byte(0x80 | ((cp >> 6) & 0x3f));
+      byte(0x80 | (cp & 0x3f));
+    }
+  }
+  return h.toString(16).padStart(8, "0");
+}

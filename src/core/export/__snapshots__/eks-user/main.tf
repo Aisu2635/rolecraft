@@ -51,12 +51,12 @@ data "aws_iam_user" "deploy_bot" {
   user_name = "deploy-bot"
 }
 
-resource "aws_eks_access_entry" "deploy_bot_kubectl_eks_1" {
+resource "aws_eks_access_entry" "deploy_bot_kubectl_eks_prod" {
   cluster_name  = "prod"
   principal_arn = data.aws_iam_user.deploy_bot.arn
 }
 
-resource "aws_eks_access_policy_association" "deploy_bot_kubectl_eks_1_view" {
+resource "aws_eks_access_policy_association" "deploy_bot_kubectl_eks_prod_view" {
   cluster_name  = "prod"
   principal_arn = data.aws_iam_user.deploy_bot.arn
   policy_arn    = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSViewPolicy"
@@ -65,7 +65,7 @@ resource "aws_eks_access_policy_association" "deploy_bot_kubectl_eks_1_view" {
     type = "cluster"
   }
 
-  depends_on = [aws_eks_access_entry.deploy_bot_kubectl_eks_1]
+  depends_on = [aws_eks_access_entry.deploy_bot_kubectl_eks_prod]
 }
 
 output "policy_arn" {

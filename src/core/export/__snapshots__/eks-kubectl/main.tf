@@ -78,12 +78,12 @@ resource "aws_iam_instance_profile" "eks_admin_cli" {
 # Give kubectl access to your EKS cluster(s) through EKS access entries.
 # The cluster's authentication mode must be API or API_AND_CONFIG_MAP for access entries.
 # Change AmazonEKSViewPolicy to AmazonEKSEditPolicy or AmazonEKSClusterAdminPolicy if more access is needed.
-resource "aws_eks_access_entry" "eks_admin_cli_eks_1" {
+resource "aws_eks_access_entry" "eks_admin_cli_eks_prod" {
   cluster_name  = "prod"
   principal_arn = aws_iam_role.eks_admin_cli.arn
 }
 
-resource "aws_eks_access_policy_association" "eks_admin_cli_eks_1_view" {
+resource "aws_eks_access_policy_association" "eks_admin_cli_eks_prod_view" {
   cluster_name  = "prod"
   principal_arn = aws_iam_role.eks_admin_cli.arn
   policy_arn    = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSViewPolicy"
@@ -92,7 +92,7 @@ resource "aws_eks_access_policy_association" "eks_admin_cli_eks_1_view" {
     type = "cluster"
   }
 
-  depends_on = [aws_eks_access_entry.eks_admin_cli_eks_1]
+  depends_on = [aws_eks_access_entry.eks_admin_cli_eks_prod]
 }
 
 output "role_arn" {

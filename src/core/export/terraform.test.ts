@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { REFERENCE_CASES } from "./__fixtures__/cases";
+import { shortHash } from "./eks";
 import { stringifyPolicy } from "./json";
 import { exportTerraform } from "./terraform";
 import type { ExportInput } from "./types";
@@ -120,12 +121,13 @@ describe("exportTerraform", () => {
 
   it("eks role trust: access entry and policy association", () => {
     const c = exportTerraform(make("eks-kubectl")).content;
-    expect(c).toContain('resource "aws_eks_access_entry" "eks_admin_cli_eks_1"');
+    expect(c).toContain('resource "aws_eks_access_entry" "eks_admin_cli_eks_prod"');
+    expect(c).toContain('resource "aws_eks_access_policy_association" "eks_admin_cli_eks_prod_view"');
     expect(c).toContain('cluster_name  = "prod"');
     expect(c).toContain("principal_arn = aws_iam_role.eks_admin_cli.arn");
     expect(c).toContain('policy_arn    = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSViewPolicy"');
     expect(c).toContain('access_scope {\n    type = "cluster"\n  }');
-    expect(c).toContain("depends_on = [aws_eks_access_entry.eks_admin_cli_eks_1]");
+    expect(c).toContain("depends_on = [aws_eks_access_entry.eks_admin_cli_eks_prod]");
     expect(c).toContain("API or API_AND_CONFIG_MAP");
     expect(c).not.toContain("aws_caller_identity");
   });
@@ -224,6 +226,44 @@ describe("exportTerraform", () => {
     const g2 = { ...g, id: "z", scope: { type: "module" as const, data: { cluster: "dev" } } };
     const c = exportTerraform({ ...input, model: { ...input.model, grants: [g, { ...g, id: "dup" }, g2] } }).content;
     expect(c.match(/resource "aws_eks_access_entry"/g)).toHaveLength(2);
-    expect(c).toContain('"eks_admin_cli_eks_2"');
+    expect(c).toContain('"eks_admin_cli_eks_dev"');
+  });
+
+  const clusterGrant = (cluster: string): ExportInput["model"]["grants"][number] => ({
+    ...eksGrant()[0]!,
+    id: `k-${cluster}`,
+    scope: { type: "module" as const, data: { cluster } },
+  });
+  const entryLabels = (input: ExportInput, clusters: string[]): string[] => {
+    const c = exportTerraform({ ...input, model: { ...input.model, grants: clusters.map(clusterGrant) } }).content;
+    return [...c.matchAll(/^resource "aws_eks_access_entry" "([^"]+)"/gm)].map((m) => m[1] as string);
+  };
+
+  it("eks labels are per cluster: reordering and removal keep each label", () => {
+    const input = make("eks-kubectl");
+    expect(entryLabels(input, ["prod", "dev", "stage"])).toStrictEqual([
+      "eks_admin_cli_eks_prod",
+      "eks_admin_cli_eks_dev",
+      "eks_admin_cli_eks_stage",
+    ]);
+    expect(entryLabels(input, ["stage", "dev"])).toStrictEqual(["eks_admin_cli_eks_stage", "eks_admin_cli_eks_dev"]);
+  });
+
+  it("eks labels: similar cluster names stay distinct", () => {
+    const input = make("eks-kubectl");
+    const labels = entryLabels(input, ["prod-a", "prod_a", "proda", "Prod", "9x"]);
+    expect(labels).toStrictEqual([
+      `eks_admin_cli_eks_prod_a_${shortHash("prod-a")}`,
+      "eks_admin_cli_eks_prod_a",
+      "eks_admin_cli_eks_proda",
+      `eks_admin_cli_eks_prod_${shortHash("Prod")}`,
+      `eks_admin_cli_eks_r_9x_${shortHash("9x")}`,
+    ]);
+    const c = exportTerraform({
+      ...input,
+      model: { ...input.model, grants: ["prod-a", "prod_a"].map(clusterGrant) },
+    }).content;
+    expect(c).toContain(`"eks_admin_cli_eks_prod_a_${shortHash("prod-a")}_view"`);
+    expect(c).toContain(`depends_on = [aws_eks_access_entry.eks_admin_cli_eks_prod_a_${shortHash("prod-a")}]`);
   });
 });
