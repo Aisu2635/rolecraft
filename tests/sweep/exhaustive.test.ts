@@ -69,7 +69,7 @@ function missingActions(svc: SlimService, level: AccessLevel, r: GenerateResult)
 function run(svc: SlimService, level: AccessLevel, scopeKind: ScopeKind): void {
   const r = evaluate(svc, level, scopeKind);
   const bad = r.issues.filter(
-    (i) => i.severity === "error" && i.id !== "E_POLICY_TOO_LARGE" && !tolerated(svc.key, i.id),
+    (i) => i.severity === "error" && !i.id.startsWith("L_") && i.id !== "E_POLICY_TOO_LARGE" && !tolerated(svc.key, i.id),
   );
   expect(bad).toStrictEqual([]);
   if (scopeKind === "all") expect(r.policy).not.toBeNull();

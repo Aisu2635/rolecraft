@@ -3,6 +3,7 @@ import type { Catalog } from "./catalog/catalog";
 import { defaultBuilders } from "./engine/modules/registry";
 import { buildGenericStatements, type BuildResult } from "./engine/generic";
 import { dedupeSids } from "./engine/sid";
+import { lint } from "./lint/lint";
 import { roleModelSchema, type Grant, type RoleModel } from "./model/model";
 import { formatPath } from "./validate/schema";
 import { buildTrust } from "./trust/trust";
@@ -132,6 +133,8 @@ export function generate(
     trust = null;
     issues.push(internal());
   }
+
+  issues.push(...lint(model, policy, trust, catalog));
 
   const sizes = {
     policy: policy ? policySize(policy) : 0,
