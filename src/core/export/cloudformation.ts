@@ -12,7 +12,7 @@ const NO_TRUST =
 const EKS_REGION = "# Deploy this stack in the region of your EKS cluster(s).";
 const DO_NOT_DEPLOY = "# Do not deploy this file.";
 const EKS_PROPAGATION =
-  '# If this fails with "invalid principal" (IAM propagation delay), delete the stack (command at the top) and deploy again.';
+  `# If this fails with "invalid principal" (IAM propagation delay), deploy again; if it was the stack's first deploy, delete the stack first (command at the top).`;
 const USER_ARN_COMMENT = [
   "# This ARN assumes the user has no IAM path. CloudFormation can't look users up:",
   "# if the user has a path, replace PrincipalArn with the user's full ARN.",

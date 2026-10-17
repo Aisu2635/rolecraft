@@ -301,7 +301,7 @@ describe("exportCloudFormation", () => {
     expect(c).toContain("API or API_AND_CONFIG_MAP");
     expect(c).toContain("  # Give kubectl access to your EKS cluster(s) through EKS access entries.\n");
     expect(c).toContain(
-      '  # If this fails with "invalid principal" (IAM propagation delay), delete the stack (command at the top) and deploy again.\n',
+      `  # If this fails with "invalid principal" (IAM propagation delay), deploy again; if it was the stack's first deploy, delete the stack first (command at the top).\n`,
     );
     expect(header(c)).toContain("# Deploy this stack in the region of your EKS cluster(s).");
     const input = make("eks-kubectl");

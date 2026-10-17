@@ -49,7 +49,7 @@ Resources:
   # Give kubectl access to your EKS cluster(s) through EKS access entries.
   # The cluster's authentication mode must be API or API_AND_CONFIG_MAP for access entries.
   # Change AmazonEKSViewPolicy to AmazonEKSEditPolicy or AmazonEKSClusterAdminPolicy if more access is needed.
-  # If this fails with "invalid principal" (IAM propagation delay), delete the stack (command at the top) and deploy again.
+  # If this fails with "invalid principal" (IAM propagation delay), deploy again; if it was the stack's first deploy, delete the stack first (command at the top).
   EksAccessEntryProded3e3174:
     Type: AWS::EKS::AccessEntry
     DependsOn:
