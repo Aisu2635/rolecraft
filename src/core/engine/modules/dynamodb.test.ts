@@ -74,6 +74,7 @@ describe("dynamodb module", () => {
         Effect: "Allow",
         Action: [
           "dynamodb:BatchWriteItem",
+          "dynamodb:ConditionCheckItem",
           "dynamodb:DeleteItem",
           "dynamodb:DescribeTable",
           "dynamodb:PutItem",

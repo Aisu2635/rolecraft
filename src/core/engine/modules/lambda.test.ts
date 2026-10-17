@@ -53,14 +53,28 @@ describe("lambda module", () => {
     expect(valid(r.statements)).toStrictEqual([]);
   });
 
-  it("deploy has no iam:PassRole", () => {
+  it("deploy has no iam:PassRole and notes the code source", () => {
     const r = run("deploy", { functionName: "my-fn" });
     expect(r.statements).toStrictEqual([
       {
         Sid: "LambdaDeployFunction",
         Effect: "Allow",
-        Action: ["lambda:GetFunction", "lambda:PublishVersion", "lambda:UpdateFunctionCode"],
+        Action: [
+          "lambda:GetFunction",
+          "lambda:GetFunctionConfiguration",
+          "lambda:PublishVersion",
+          "lambda:UpdateFunctionCode",
+        ],
         Resource: A,
+      },
+    ]);
+    expect(r.issues).toStrictEqual([
+      {
+        id: "I_LAMBDA_DEPLOY_SOURCE",
+        severity: "info",
+        grantId: "g1",
+        message:
+          "Deploying from S3 also needs s3:GetObject on the code object; container-image functions also need ECR pull access (ecr:BatchGetImage, ecr:GetDownloadUrlForLayer) on the image repository.",
       },
     ]);
     expect(valid(r.statements)).toStrictEqual([]);

@@ -14,22 +14,22 @@ export const logsDataSchema = z
 
 export type LogsData = z.infer<typeof logsDataSchema>;
 
-/** Actions that need a log-stream resource vs a log-group resource. */
-const STREAM_WRITE = ["CreateLogStream", "PutLogEvents"];
-const STREAM_READ = ["GetLogEvents"];
-const GROUP_READ = ["DescribeLogStreams", "FilterLogEvents"];
+/** Every action here is authorized on log-group:<name>:* */
+const WRITE = ["CreateLogStream", "PutLogEvents"];
+const READ = [
+  "DescribeLogStreams",
+  "FilterLogEvents",
+  "GetLogEvents",
+  "StartLiveTail",
+];
 
 const PRESETS: ModulePreset[] = [
-  {
-    id: "write",
-    label: "write",
-    actions: [...STREAM_WRITE, "CreateLogGroup"],
-  },
-  { id: "read", label: "read", actions: [...GROUP_READ, ...STREAM_READ] },
+  { id: "write", label: "write", actions: [...WRITE, "CreateLogGroup"] },
+  { id: "read", label: "read", actions: [...READ, "DescribeLogGroups"] },
   {
     id: "read-write",
     label: "read + write",
-    actions: [...STREAM_WRITE, "CreateLogGroup", ...GROUP_READ, ...STREAM_READ],
+    actions: [...WRITE, "CreateLogGroup", ...READ, "DescribeLogGroups"],
   },
 ];
 
@@ -48,19 +48,15 @@ export const logsModule: Module<LogsData> = {
     const writes = preset === "write" || preset === "read-write";
     const reads = preset === "read" || preset === "read-write";
     const group = `arn:aws:logs:${ctx.region ?? "*"}:${ctx.accountId ?? "*"}:log-group:${data.logGroup}`;
-    const streamActions = [
-      ...(writes ? STREAM_WRITE : []),
-      ...(reads ? STREAM_READ : []),
-    ];
-    const groupActions = [
-      ...(writes && data.createGroup ? ["CreateLogGroup"] : []),
-      ...(reads ? GROUP_READ : []),
+    const actions = [
+      ...(writes ? [...WRITE, ...(data.createGroup ? ["CreateLogGroup"] : [])] : []),
+      ...(reads ? READ : []),
     ];
     return {
       statements: [
-        stmt(`${sid}Streams`, prefixed("logs", streamActions), [`${group}:*`]),
-        ...(groupActions.length > 0
-          ? [stmt(`${sid}Group`, prefixed("logs", groupActions), [group])]
+        stmt(`${sid}Group`, prefixed("logs", actions), [`${group}:*`]),
+        ...(reads
+          ? [stmt(`${sid}List`, ["logs:DescribeLogGroups"], ["*"])]
           : []),
       ],
       issues: [],

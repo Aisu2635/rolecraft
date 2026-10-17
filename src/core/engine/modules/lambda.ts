@@ -23,7 +23,12 @@ const PRESETS: ModulePreset[] = [
   {
     id: "deploy",
     label: "deploy code",
-    actions: ["UpdateFunctionCode", "GetFunction", "PublishVersion"],
+    actions: [
+      "UpdateFunctionCode",
+      "GetFunction",
+      "GetFunctionConfiguration",
+      "PublishVersion",
+    ],
   },
 ];
 
@@ -45,7 +50,18 @@ export const lambdaModule: Module<LambdaData> = {
       statements: [
         stmt(`Lambda${pascal(preset)}Function`, prefixed("lambda", actions), resources),
       ],
-      issues: [],
+      issues:
+        preset === "deploy"
+          ? [
+              {
+                id: "I_LAMBDA_DEPLOY_SOURCE",
+                severity: "info",
+                grantId: grant.id,
+                message:
+                  "Deploying from S3 also needs s3:GetObject on the code object; container-image functions also need ECR pull access (ecr:BatchGetImage, ecr:GetDownloadUrlForLayer) on the image repository.",
+              },
+            ]
+          : [],
     };
   },
   explain: (grant, data) => {

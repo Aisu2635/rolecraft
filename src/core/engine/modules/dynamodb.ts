@@ -29,6 +29,7 @@ const WRITE = [
   "DeleteItem",
   "BatchWriteItem",
   "DescribeTable",
+  "ConditionCheckItem",
 ];
 
 const PRESETS: ModulePreset[] = [

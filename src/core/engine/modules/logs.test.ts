@@ -31,17 +31,16 @@ describe("logs module", () => {
     expect(defaultBuilders()["logs"]).toBeTypeOf("function");
   });
 
-  it("write splits stream and group resources", () => {
+  it("write: one statement on log-group:<n>:*", () => {
     const r = run("write", { logGroup: "/aws/app" });
     expect(r.issues).toStrictEqual([]);
     expect(r.statements).toStrictEqual([
       {
-        Sid: "LogsWriteStreams",
+        Sid: "LogsWriteGroup",
         Effect: "Allow",
-        Action: ["logs:CreateLogStream", "logs:PutLogEvents"],
+        Action: ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"],
         Resource: `${G}:*`,
       },
-      { Sid: "LogsWriteGroup", Effect: "Allow", Action: "logs:CreateLogGroup", Resource: G },
     ]);
     expect(valid(r.statements)).toStrictEqual([]);
   });
@@ -50,7 +49,7 @@ describe("logs module", () => {
     const r = run("write", { logGroup: "/aws/app", createGroup: false });
     expect(r.statements).toStrictEqual([
       {
-        Sid: "LogsWriteStreams",
+        Sid: "LogsWriteGroup",
         Effect: "Allow",
         Action: ["logs:CreateLogStream", "logs:PutLogEvents"],
         Resource: `${G}:*`,
@@ -59,40 +58,43 @@ describe("logs module", () => {
     expect(valid(r.statements)).toStrictEqual([]);
   });
 
-  it("read splits resources", () => {
+  it("read adds StartLiveTail and DescribeLogGroups on *", () => {
     const r = run("read", { logGroup: "/aws/app" }, { partition: "aws" });
     expect(r.statements).toStrictEqual([
       {
-        Sid: "LogsReadStreams",
-        Effect: "Allow",
-        Action: "logs:GetLogEvents",
-        Resource: "arn:aws:logs:*:*:log-group:/aws/app:*",
-      },
-      {
         Sid: "LogsReadGroup",
         Effect: "Allow",
-        Action: ["logs:DescribeLogStreams", "logs:FilterLogEvents"],
-        Resource: "arn:aws:logs:*:*:log-group:/aws/app",
+        Action: [
+          "logs:DescribeLogStreams",
+          "logs:FilterLogEvents",
+          "logs:GetLogEvents",
+          "logs:StartLiveTail",
+        ],
+        Resource: "arn:aws:logs:*:*:log-group:/aws/app:*",
       },
+      { Sid: "LogsReadList", Effect: "Allow", Action: "logs:DescribeLogGroups", Resource: "*" },
     ]);
     expect(valid(r.statements)).toStrictEqual([]);
   });
 
-  it("read-write groups by resource", () => {
+  it("read-write is the union", () => {
     const r = run("read-write", { logGroup: "/aws/app" });
     expect(r.statements).toStrictEqual([
       {
-        Sid: "LogsReadWriteStreams",
-        Effect: "Allow",
-        Action: ["logs:CreateLogStream", "logs:GetLogEvents", "logs:PutLogEvents"],
-        Resource: `${G}:*`,
-      },
-      {
         Sid: "LogsReadWriteGroup",
         Effect: "Allow",
-        Action: ["logs:CreateLogGroup", "logs:DescribeLogStreams", "logs:FilterLogEvents"],
-        Resource: G,
+        Action: [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:DescribeLogStreams",
+          "logs:FilterLogEvents",
+          "logs:GetLogEvents",
+          "logs:PutLogEvents",
+          "logs:StartLiveTail",
+        ],
+        Resource: `${G}:*`,
       },
+      { Sid: "LogsReadWriteList", Effect: "Allow", Action: "logs:DescribeLogGroups", Resource: "*" },
     ]);
     expect(valid(r.statements)).toStrictEqual([]);
   });
