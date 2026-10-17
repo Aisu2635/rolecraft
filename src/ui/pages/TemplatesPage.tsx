@@ -1,5 +1,5 @@
-import { ContentLayout, Header } from "@cloudscape-design/components";
+import { ComingSoon } from "./ComingSoon";
 
 export function TemplatesPage() {
-  return <ContentLayout header={<Header variant="h1">Templates</Header>}>Coming soon.</ContentLayout>;
+  return <ComingSoon title="Templates" message="Ready-made least-privilege roles are on the way." />;
 }

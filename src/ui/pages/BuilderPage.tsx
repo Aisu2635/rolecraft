@@ -1,5 +1,10 @@
-import { ContentLayout, Header } from "@cloudscape-design/components";
+import { ComingSoon } from "./ComingSoon";
 
 export function BuilderPage() {
-  return <ContentLayout header={<Header variant="h1">Builder</Header>}>Coming soon.</ContentLayout>;
+  return (
+    <ComingSoon
+      title="Builder"
+      message="The visual builder is on the way. The policy engine behind it is already built and tested."
+    />
+  );
 }
