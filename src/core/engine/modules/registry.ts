@@ -2,6 +2,9 @@ import type { GrantBuilder } from "../../generate";
 import { ec2Module } from "./ec2";
 import { ecrModule } from "./ecr";
 import { eksModule } from "./eks";
+import { dynamodbModule } from "./dynamodb";
+import { lambdaModule } from "./lambda";
+import { logsModule } from "./logs";
 import { s3Module } from "./s3";
 import { runModule, type Module } from "./types";
 
@@ -11,6 +14,9 @@ export const MODULES: Record<string, Module> = {
   ec2: ec2Module as Module,
   ecr: ecrModule as Module,
   eks: eksModule as Module,
+  lambda: lambdaModule as Module,
+  dynamodb: dynamodbModule as Module,
+  logs: logsModule as Module,
 };
 
 export function defaultBuilders(): Record<string, GrantBuilder> {
