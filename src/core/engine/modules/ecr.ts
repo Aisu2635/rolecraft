@@ -23,6 +23,7 @@ const PULL = [
   "BatchCheckLayerAvailability",
 ];
 const PUSH = [
+  "BatchGetImage",
   "BatchCheckLayerAvailability",
   "InitiateLayerUpload",
   "UploadLayerPart",

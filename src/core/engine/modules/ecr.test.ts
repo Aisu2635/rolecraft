@@ -62,6 +62,7 @@ describe("ecr module", () => {
         Effect: "Allow",
         Action: [
           "ecr:BatchCheckLayerAvailability",
+          "ecr:BatchGetImage",
           "ecr:CompleteLayerUpload",
           "ecr:InitiateLayerUpload",
           "ecr:PutImage",

@@ -15,22 +15,29 @@ export const ec2DataSchema = z
         type: z.literal("tag"),
         key: z.string().regex(TAG_KEY_RE, "not a valid tag key"),
         value: z.string().regex(TAG_VALUE_RE, "not a valid tag value"),
-      }),
+      }).strict(),
       z.object({
         type: z.literal("ids"),
         ids: z
           .array(z.string().regex(INSTANCE_ID_RE, "not a valid instance id"))
           .min(1, "add at least one instance id")
           .max(50, "at most 50 instance ids"),
-      }),
-      z.object({ type: z.literal("all") }),
+      }).strict(),
+      z.object({ type: z.literal("all") }).strict(),
     ]),
   })
   .strict();
 
 export type Ec2Data = z.infer<typeof ec2DataSchema>;
 
-const VIEW = ["DescribeInstances", "DescribeInstanceStatus", "DescribeTags"];
+const VIEW = [
+  "DescribeInstances",
+  "DescribeInstanceStatus",
+  "DescribeTags",
+  "DescribeInstanceTypes",
+  "DescribeVolumes",
+  "DescribeAvailabilityZones",
+];
 
 const PRESETS: ModulePreset[] = [
   { id: "view", label: "view", actions: VIEW },
@@ -88,7 +95,13 @@ function build(
       prefixed("ec2", manage),
       resources,
       sel.type === "tag"
-        ? { StringEquals: { [`aws:ResourceTag/${sel.key}`]: sel.value } }
+        ? {
+            StringEquals: { [`aws:ResourceTag/${sel.key}`]: sel.value },
+            // Stop the grant from retagging instances out of (or into) its own scope.
+            ...(preset === "tags"
+              ? { "ForAllValues:StringNotEquals": { "aws:TagKeys": [sel.key] } }
+              : {}),
+          }
         : undefined,
     ),
   );
@@ -98,7 +111,7 @@ function build(
       severity: "info",
       grantId: grant.id,
       message:
-        "If the instances' EBS volumes use a customer managed KMS key, also allow kms:CreateGrant on that key.",
+        "If the instances' EBS volumes use a customer managed KMS key, also allow kms:CreateGrant on that key (scope it with the condition kms:GrantIsForAWSResource = true). Without it the instance silently returns to stopped. The AWS managed aws/ebs key needs nothing extra.",
     });
   }
   if (sel.type === "all") {

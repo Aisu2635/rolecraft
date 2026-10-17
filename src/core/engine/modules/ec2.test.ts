@@ -23,7 +23,14 @@ const run = (preset: string, data: unknown, c: BuildContext = ctx) =>
 const valid = (statements: Statement[]) =>
   validateIdentityPolicy({ Version: "2012-10-17", Statement: statements }, catalog);
 const tag = { type: "tag", key: "Env", value: "dev" };
-const VIEW = ["ec2:DescribeInstanceStatus", "ec2:DescribeInstances", "ec2:DescribeTags"];
+const VIEW = [
+  "ec2:DescribeAvailabilityZones",
+  "ec2:DescribeInstanceStatus",
+  "ec2:DescribeInstanceTypes",
+  "ec2:DescribeInstances",
+  "ec2:DescribeTags",
+  "ec2:DescribeVolumes",
+];
 
 describe("ec2 module", () => {
   it("is registered", () => {
@@ -58,7 +65,7 @@ describe("ec2 module", () => {
     ]);
     expect(r.issues.map((i) => [i.id, i.severity])).toStrictEqual([["I_EC2_KMS_GRANT", "info"]]);
     expect(r.issues[0]?.message).toBe(
-      "If the instances' EBS volumes use a customer managed KMS key, also allow kms:CreateGrant on that key.",
+      "If the instances' EBS volumes use a customer managed KMS key, also allow kms:CreateGrant on that key (scope it with the condition kms:GrantIsForAWSResource = true). Without it the instance silently returns to stopped. The AWS managed aws/ebs key needs nothing extra.",
     );
     expect(valid(r.statements)).toStrictEqual([]);
   });
@@ -101,24 +108,32 @@ describe("ec2 module", () => {
       Effect: "Allow",
       Action: ["ec2:CreateTags", "ec2:DeleteTags"],
       Resource: "arn:aws:ec2:*:*:instance/*",
-      Condition: { StringEquals: { "aws:ResourceTag/Env": "dev" } },
+      Condition: {
+        StringEquals: { "aws:ResourceTag/Env": "dev" },
+        "ForAllValues:StringNotEquals": { "aws:TagKeys": ["Env"] },
+      },
     });
     expect(r.issues).toStrictEqual([]);
     expect(valid(r.statements)).toStrictEqual([]);
   });
 
-  it("every preset validates for every selector", () => {
-    for (const p of ec2Module.presets) {
-      for (const selector of [tag, { type: "all" }, { type: "ids", ids: ["i-0123456789abcdef0"] }]) {
-        expect(valid(run(p.id, { selector }).statements)).toStrictEqual([]);
-      }
-    }
+  const selectors: [string, unknown][] = [
+    ["tag", tag],
+    ["all", { type: "all" }],
+    ["ids", { type: "ids", ids: ["i-0123456789abcdef0"] }],
+  ];
+  const cases = ["view", "start-stop", "start-stop-reboot", "terminate", "tags"].flatMap(
+    (p) => selectors.map(([n, selector]) => [p, n, selector] as const),
+  );
+  it.each(cases)("preset %s with %s selector validates", (p, _n, selector) => {
+    expect(valid(run(p, { selector }).statements)).toStrictEqual([]);
   });
 
   it("rejects invalid data", () => {
     const bad = (selector: unknown) => run("view", { selector }).issues[0]?.id;
     expect(bad({ type: "ids", ids: ["i-XYZ"] })).toBe("E_MODULE_DATA");
     expect(bad({ type: "ids", ids: [] })).toBe("E_MODULE_DATA");
+    expect(bad({ type: "all", ids: ["i-0123456789abcdef0"] })).toBe("E_MODULE_DATA");
     expect(bad({ type: "tag", key: "", value: "x" })).toBe("E_MODULE_DATA");
     expect(bad({ type: "tag", key: "k", value: "a*" })).toBe("E_MODULE_DATA");
   });
