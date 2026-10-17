@@ -6,6 +6,10 @@ const ACCOUNT_ID = /^\d{12}$/;
 const GITHUB_OWNER = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
 const GITHUB_REPO = /^[A-Za-z0-9._-]{1,100}$/;
 const REGION = /^[a-z]{2}(-gov)?-[a-z]+-\d$/;
+const EXTERNAL_ID = /^[\w+=,.@:/-]{2,1224}$/;
+const MANAGED_POLICY_ARN = /^arn:aws:iam::(aws|\d{12}):policy\/[\w+=,.@/-]{1,512}$/;
+const MAX_MANAGED_POLICIES = 20;
+const NON_AWS_REGION = /-gov-|^cn-|^us-iso/;
 const PRINCIPAL_NAME = /^[\w+=,.@-]{1,128}$/;
 
 function issue(id: string, path: string, message: string): Issue {
@@ -34,13 +38,28 @@ export function validateModelValues(model: RoleModel): Issue[] {
     check(out, model.accountId, ACCOUNT_ID, "V_ACCOUNT_ID", "accountId", "Account ID must be exactly 12 digits.");
   }
   if (model.region !== undefined && model.region !== "") {
-    check(out, model.region, REGION, "V_REGION", "region", "Region must look like us-east-1.");
+    if (typeof model.region === "string" && NON_AWS_REGION.test(model.region)) {
+      out.push(issue("V_REGION", "region", "Only regions in the standard AWS partition are supported (not GovCloud, China or isolated regions)."));
+    } else {
+      check(out, model.region, REGION, "V_REGION", "region", "Region must look like us-east-1.");
+    }
+  }
+  if (Array.isArray(model.managedPolicyArns)) {
+    model.managedPolicyArns.forEach((arn, i) => {
+      check(out, arn, MANAGED_POLICY_ARN, "V_MANAGED_POLICY_ARN", `managedPolicyArns[${i}]`, "Managed policy ARN must look like arn:aws:iam::aws:policy/Name.");
+    });
+    if (model.managedPolicyArns.length > MAX_MANAGED_POLICIES) {
+      out.push(issue("V_TOO_MANY_MANAGED_POLICIES", "managedPolicyArns", `A role can have at most ${MAX_MANAGED_POLICIES} managed policies attached.`));
+    }
   }
   const trust = model.trust;
   if (typeof trust !== "object" || trust === null) return out;
   switch (trust.kind) {
     case "account":
       check(out, trust.accountId, ACCOUNT_ID, "V_ACCOUNT_ID", "trust.accountId", "Trusted account ID must be exactly 12 digits.");
+      if (trust.externalId !== undefined && trust.externalId !== "") {
+        check(out, trust.externalId, EXTERNAL_ID, "V_EXTERNAL_ID", "trust.externalId", "External ID must be 2-1224 characters: letters, digits and + = , . @ : / _ -");
+      }
       break;
     case "github":
       check(out, trust.owner, GITHUB_OWNER, "V_GITHUB_OWNER", "trust.owner", "GitHub owner must be 1-39 letters, digits or hyphens, starting with a letter or digit.");

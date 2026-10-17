@@ -17,7 +17,7 @@ describe("validateModelValues", () => {
     expect(ids({ ...createEmptyModel(), accountId: "12345" })).toEqual(["V_ACCOUNT_ID"]);
     expect(ids({ ...createEmptyModel(), accountId: "123456789012" })).toEqual([]);
     expect(ids({ ...createEmptyModel(), region: "us-east-1" })).toEqual([]);
-    expect(ids({ ...createEmptyModel(), region: "us-gov-west-1" })).toEqual([]);
+    expect(ids({ ...createEmptyModel(), region: "us-gov-west-1" })).toEqual(["V_REGION"]);
     expect(ids({ ...createEmptyModel(), region: "useast1" })).toEqual(["V_REGION"]);
   });
   it("blank optional fields count as unset", () => {
@@ -47,5 +47,31 @@ describe("validateModelValues", () => {
     expect(() => validateModelValues({} as never)).not.toThrow();
     expect(validateModelValues(null as never).length).toBeGreaterThan(0);
     expect(validateModelValues({ name: "x", trust: null } as never)).toEqual([]);
+  });
+  it("rejects regions outside partition aws", () => {
+    for (const region of ["us-gov-east-1", "cn-north-1", "cn-northwest-1", "us-iso-east-1", "us-isob-east-1"]) {
+      expect(ids({ ...createEmptyModel(), region })).toEqual(["V_REGION"]);
+    }
+  });
+  it("external id", () => {
+    const acct = (externalId?: string) => withTrust({ kind: "account", accountId: "123456789012", externalId });
+    expect(ids(acct(undefined))).toEqual([]);
+    expect(ids(acct(""))).toEqual([]);
+    expect(ids(acct("abc-123_x:y/z@1.2"))).toEqual([]);
+    expect(ids(acct("a"))).toEqual(["V_EXTERNAL_ID"]);
+    expect(ids(acct("has space"))).toEqual(["V_EXTERNAL_ID"]);
+    expect(ids(acct('q"uote'))).toEqual(["V_EXTERNAL_ID"]);
+    expect(ids(acct("x".repeat(1225)))).toEqual(["V_EXTERNAL_ID"]);
+    expect(ids(acct("x".repeat(1224)))).toEqual([]);
+  });
+  it("managed policy ARNs", () => {
+    const m = (managedPolicyArns: string[]) => ({ ...createEmptyModel(), managedPolicyArns });
+    expect(ids(m(["arn:aws:iam::aws:policy/ReadOnlyAccess", "arn:aws:iam::123456789012:policy/team/p"]))).toEqual([]);
+    expect(ids(m(["arn:aws:iam::aws:role/x"]))).toEqual(["V_MANAGED_POLICY_ARN"]);
+    expect(ids(m(["arn:aws:iam::12345:policy/x"]))).toEqual(["V_MANAGED_POLICY_ARN"]);
+    expect(ids(m(["ReadOnlyAccess"]))).toEqual(["V_MANAGED_POLICY_ARN"]);
+    const ok = "arn:aws:iam::aws:policy/P";
+    expect(ids(m(Array(20).fill(ok)))).toEqual([]);
+    expect(ids(m(Array(21).fill(ok)))).toEqual(["V_TOO_MANY_MANAGED_POLICIES"]);
   });
 });
