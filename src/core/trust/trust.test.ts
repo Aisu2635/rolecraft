@@ -41,6 +41,24 @@ describe("buildTrust service", () => {
   });
 });
 
+describe("buildTrust github ref safety", () => {
+  it.each(["branch", "tag", "environment"] as const)("rejects policy variables in %s", (type) => {
+    const r = buildTrust(gh({ type, value: "a${aws:username}" }), ctx);
+    expect(r.doc).toBeNull();
+    const i = r.issues.find((x) => x.id === "E_GITHUB_REF_VALUE");
+    expect(i?.severity).toBe("error");
+  });
+  it("warns that wildcards in an environment are matched literally", () => {
+    for (const value of ["pr-*", "p?"]) {
+      const r = buildTrust(gh({ type: "environment", value }), ctx);
+      expect(r.doc).toStrictEqual(ghDoc(`repo:o/r:environment:${value}`));
+      const w = r.issues.find((x) => x.id === "W_GITHUB_ENV_LITERAL");
+      expect(w?.severity).toBe("warning");
+      expect(w?.message).toContain("matched literally");
+    }
+  });
+});
+
 describe("buildTrust github", () => {
   it("branch", () => {
     const r = buildTrust(gh({ type: "branch", value: "main" }), ctx);

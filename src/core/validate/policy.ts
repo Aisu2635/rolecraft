@@ -214,9 +214,13 @@ function validateTrustStatement(statement: Statement, index: number, issues: Iss
     }
   }
   const subKey = `${GITHUB_HOST}:sub`;
+  const subValues = Object.values(statement.Condition ?? {}).flatMap((block) =>
+    Object.entries(block).flatMap(([k, v]) => (k.toLowerCase() === subKey ? toList(v) : [])),
+  );
+  const unrestricted = subValues.some((v) => v === "*" || v.startsWith("repo:*"));
   if (
     federated.some((f) => f.includes(`oidc-provider/${GITHUB_HOST}`)) &&
-    !keys.some(({ key }) => key.toLowerCase() === subKey)
+    (!keys.some(({ key }) => key.toLowerCase() === subKey) || unrestricted)
   ) {
     issues.push(err("V_GITHUB_SUB_MISSING", `GitHub trust must restrict ${subKey} to a repository.`, `${base}.Condition`));
   }

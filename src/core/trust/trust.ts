@@ -44,6 +44,13 @@ function buildGithub(trust: Extract<Trust, { kind: "github" }>, ctx: BuildContex
       message: `Enter a ${ref.type} name to lock the trust to.`,
     });
   }
+  if (ref.type !== "pull_request" && value.includes("${")) {
+    issues.push({
+      id: "E_GITHUB_REF_VALUE",
+      severity: "error",
+      message: `The ${ref.type} name cannot contain "\${" (policy variables are not allowed).`,
+    });
+  }
   if (issues.length > 0 || !ctx.accountId) return { doc: null, issues };
 
   const base = `repo:${owner}/${repo}`;
@@ -72,6 +79,13 @@ function buildGithub(trust: Extract<Trust, { kind: "github" }>, ctx: BuildContex
       id: "W_GITHUB_WILDCARD",
       severity: "warning",
       message: `The ${ref.type} pattern "${value}" uses a wildcard, so any matching ref in this repository can assume the role.`,
+    });
+  }
+  if (ref.type === "environment" && /[*?]/.test(value)) {
+    issues.push({
+      id: "W_GITHUB_ENV_LITERAL",
+      severity: "warning",
+      message: `Wildcards in the environment name "${value}" are matched literally, not as patterns.`,
     });
   }
   return {

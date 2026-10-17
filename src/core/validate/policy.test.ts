@@ -237,6 +237,13 @@ describe("validateTrustPolicy", () => {
     expect(trustIds(tdoc({ ...base, Condition: { StringEquals: { [`${OIDC}:aud`]: "sts.amazonaws.com" } } }))).toEqual(["V_GITHUB_SUB_MISSING"]);
     expect(trustIds(tdoc({ ...base, Condition: { StringLike: { [`${OIDC}:SUB`]: "repo:o/r:*" } } }))).toEqual([]);
   });
+  it("rejects an unrestricted GitHub sub condition", () => {
+    const base = { Principal: { Federated: FED }, Action: "sts:AssumeRoleWithWebIdentity" };
+    for (const v of ["*", "repo:*", "repo:*:ref:refs/heads/main", ["repo:o/r:*", "*"]]) {
+      expect(trustIds(tdoc({ ...base, Condition: { StringLike: { [`${OIDC}:sub`]: v } } }))).toEqual(["V_GITHUB_SUB_MISSING"]);
+    }
+    expect(trustIds(tdoc({ ...base, Condition: { StringLike: { [`${OIDC}:sub`]: "repo:o/*" } } }))).toEqual([]);
+  });
   it("validates trust condition operators and keys", () => {
     const p = { Principal: { Service: "ec2.amazonaws.com" }, Action: "sts:AssumeRole" };
     expect(trustIds(tdoc({ ...p, Condition: { Bogus: { "sts:ExternalId": "x" } } }))).toEqual(["V_CONDITION_OPERATOR"]);
