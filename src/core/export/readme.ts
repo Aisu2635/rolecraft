@@ -3,18 +3,21 @@ import { exportCliPowerShell } from "./cli-ps";
 import { cfnCanDeploy, cfnDeleteCommand, cfnDeployCommand } from "./cloudformation";
 import { EKS_GROUP_COMMENT, eksClusters } from "./eks";
 import type { ExportFile } from "./json";
-import { exportTerraform, TF_AWS_PROVIDER_VERSION } from "./terraform";
-import type { ExportInput } from "./types";
+import { TF_AWS_PROVIDER_VERSION, tfNeedsRegion } from "./terraform";
+import { shQuote, tfLabel, type ExportInput } from "./types";
 
 /**
- * Model-derived text as literal Markdown on one line: inline syntax characters are backslash-escaped, as are
- * entity-like `&…;` and anything at the start that would open a block (heading, list, quote) inside a bullet.
- * Plain prose (`.`, `-`, `/`, parentheses) is left alone so the raw file stays readable.
+ * Model-derived text as literal Markdown on one trimmed line: inline syntax characters are backslash-escaped,
+ * as are entity-like `&…;` and anything at the start that would open a block (heading, list, quote) inside a
+ * bullet. Intraword `_` (`my_app_role`) can't emphasize in CommonMark, so it stays; plain prose (`.`, `-`, `/`,
+ * `+`, parentheses) is left alone so the raw file stays readable.
  */
 export function escapeMarkdown(s: string): string {
   return s
     .replace(/\s*[\r\n]+\s*/g, " ")
-    .replace(/[\\`*_[\]<>|~]/g, "\\$&")
+    .trim()
+    .replace(/[\\`*[\]<>|~]/g, "\\$&")
+    .replace(/(?<![A-Za-z0-9])_|_(?![A-Za-z0-9])/g, "\\_")
     .replace(/&(?=#?[A-Za-z0-9]+;)/g, "\\&")
     .replace(/^[#+-]/, "\\$&")
     .replace(/^(\d+)([.)])/, "$1\\$2");
@@ -67,7 +70,7 @@ function shapeOf(input: ExportInput): Shape {
 const EKS_ACTIONS = ["eks:CreateAccessEntry", "eks:DescribeAccessEntry", "eks:AssociateAccessPolicy", "eks:ListAssociatedAccessPolicies"];
 
 /** Actions each method calls (create + the reads it does while applying), in call order. */
-function permissions(s: Shape): { cli: string[]; terraform: string[]; cfn: string[] } {
+function permissions(s: Shape): Record<"cli" | "terraform" | "cfn" | "tfOidc" | "cfnOidc", string[]> {
   const cli: string[] = [];
   const tf: string[] = [];
   const cfn: string[] = [];
@@ -93,7 +96,7 @@ function permissions(s: Shape): { cli: string[]; terraform: string[]; cfn: strin
     if (s.eksEntries) {
       cli.push("iam:GetUser", "eks:CreateAccessEntry", "eks:AssociateAccessPolicy");
       tf.push("iam:GetUser", ...EKS_ACTIONS);
-      cfn.push(...EKS_ACTIONS);
+      cfn.push(...EKS_ACTIONS, "eks:TagResource");
     }
   } else {
     if (s.github) cli.push("iam:ListOpenIDConnectProviders", "iam:CreateOpenIDConnectProvider");
@@ -125,7 +128,7 @@ function permissions(s: Shape): { cli: string[]; terraform: string[]; cfn: strin
     if (s.eksEntries) {
       cli.push("iam:GetRole", "eks:CreateAccessEntry", "eks:AssociateAccessPolicy");
       tf.push(...EKS_ACTIONS);
-      cfn.push(...EKS_ACTIONS);
+      cfn.push(...EKS_ACTIONS, "eks:TagResource");
     }
   }
   const stack = [
@@ -136,10 +139,18 @@ function permissions(s: Shape): { cli: string[]; terraform: string[]; cfn: strin
     "cloudformation:GetTemplateSummary",
   ];
   const uniq = (xs: string[]): string[] => [...new Set(xs)];
-  return { cli: uniq(cli), terraform: uniq(tf), cfn: uniq([...stack, ...cfn]) };
+  // Terraform/CloudFormation only create the GitHub OIDC provider when the user uncomments/adds it.
+  const oidc = s.github ? ["iam:CreateOpenIDConnectProvider", "iam:GetOpenIDConnectProvider"] : [];
+  return {
+    cli: uniq(cli),
+    terraform: uniq(tf),
+    cfn: uniq([...stack, ...cfn]),
+    tfOidc: oidc,
+    cfnOidc: s.github ? [...oidc, "iam:TagOpenIDConnectProvider"] : [],
+  };
 }
 
-/** The re-run note for the CLI scripts. */
+/** The re-run note for the CLI scripts (without the cleanup commands). */
 function rerunNote(s: Shape): string {
   if (!s.principal) return CREATE_ONCE_ROLE;
   const alternatives = s.cfn ? "Terraform/CloudFormation" : "Terraform";
@@ -156,13 +167,68 @@ function rerunNote(s: Shape): string {
   return `Re-running these scripts is safe: ${parts.join(" and ")}.`;
 }
 
+/**
+ * Bash commands that delete what the CLI script created, in an order IAM accepts (a policy can't be deleted
+ * while attached, a role while it has policies or an instance profile). Null when re-running is already safe.
+ */
+function cleanupCommands(model: ExportInput["model"], s: Shape): string[] | null {
+  if (s.principal && !s.managed && !s.eksEntries) return null;
+  const region = model.region ? ` --region ${shQuote(model.region)}` : "";
+  const entries = (arnVar: string): string[] =>
+    s.clusters.map((c) => `aws eks delete-access-entry --cluster-name ${shQuote(c)} --principal-arn "$${arnVar}"${region}`);
+  const vars: string[] = [];
+  const steps: string[] = [];
+  if (s.managed || !s.principal) vars.push(`ROLE_NAME=${shQuote(model.name)}`);
+  if (s.managed) {
+    vars.push(
+      "ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)",
+      'POLICY_ARN="arn:aws:iam::${ACCOUNT_ID}:policy/${ROLE_NAME}-policy"',
+    );
+  }
+  if (s.principal) {
+    const k = s.principal;
+    const trust = model.trust as Extract<ExportInput["model"]["trust"], { kind: "principal" }>;
+    vars.push(`PRINCIPAL_NAME=${shQuote(trust.name)}`);
+    if (s.eksEntries) {
+      vars.push('PRINCIPAL_ARN=$(aws iam get-user --user-name "$PRINCIPAL_NAME" --query User.Arn --output text)');
+      steps.push(...entries("PRINCIPAL_ARN"));
+    }
+    if (s.managed) {
+      steps.push(
+        `aws iam detach-${k}-policy --${k}-name "$PRINCIPAL_NAME" --policy-arn "$POLICY_ARN"`,
+        'aws iam delete-policy --policy-arn "$POLICY_ARN"',
+      );
+    }
+    return [...vars, ...steps];
+  }
+  if (s.eksEntries) {
+    vars.push('ROLE_ARN=$(aws iam get-role --role-name "$ROLE_NAME" --query Role.Arn --output text)');
+    steps.push(...entries("ROLE_ARN"));
+  }
+  if (s.ec2) {
+    steps.push(
+      'aws iam remove-role-from-instance-profile --instance-profile-name "$ROLE_NAME" --role-name "$ROLE_NAME"',
+      'aws iam delete-instance-profile --instance-profile-name "$ROLE_NAME"',
+    );
+  }
+  if (s.managed) {
+    steps.push(
+      'aws iam detach-role-policy --role-name "$ROLE_NAME" --policy-arn "$POLICY_ARN"',
+      'aws iam delete-policy --policy-arn "$POLICY_ARN"',
+    );
+  }
+  if (s.inline) steps.push('aws iam delete-role-policy --role-name "$ROLE_NAME" --policy-name "${ROLE_NAME}-inline"');
+  for (const arn of s.arns) steps.push(`aws iam detach-role-policy --role-name "$ROLE_NAME" --policy-arn ${shQuote(arn)}`);
+  steps.push('aws iam delete-role --role-name "$ROLE_NAME"');
+  return [...vars, ...steps];
+}
+
 const GITHUB_PROVIDER_NOTE = "If your account doesn't have the GitHub OIDC provider yet,";
 
 function howToApply(input: ExportInput, s: Shape): string[] {
   const { model, result } = input;
   const bash = exportCliBash(input).filename;
   const ps = exportCliPowerShell(input).filename;
-  const tfAsksRegion = exportTerraform(input).content.includes('variable "region"');
   const out: string[] = [];
   const p = (...lines: string[]): void => {
     out.push(lines.join(" "), "");
@@ -171,7 +237,7 @@ function howToApply(input: ExportInput, s: Shape): string[] {
     out.push(`\`\`\`${lang}`, command, "```", "");
   };
 
-  p("Use **one** of the four ways below: each creates the same resources.");
+  p(`Use **one** of the ${s.cfn ? "four" : "three"} ways below: each creates the same resources.`);
   p(
     "**Prerequisites:** AWS CLI v2 configured with credentials for the target account (`aws sts get-caller-identity` shows which one).",
     `Terraform also needs Terraform ≥ 1.9; \`terraform init\` installs the AWS provider (\`${TF_AWS_PROVIDER_VERSION}\`).`,
@@ -188,6 +254,11 @@ function howToApply(input: ExportInput, s: Shape): string[] {
   } else if (s.clusters.length > 0) {
     p(`**kubectl access:** ${EKS_GROUP_COMMENT.replace("# kubectl access: ", "")}`);
   }
+  if (s.github) {
+    p(
+      "**GitHub OIDC provider:** The scripts create the GitHub OIDC provider if your account doesn't have it; Terraform and CloudFormation only create it if you uncomment or add it (see below).",
+    );
+  }
 
   const written = [...(result.trust ? ["`trust.json`"] : []), ...(result.policy ? ["`policy.json`"] : [])];
   const writes = written.length > 0 ? ` It writes ${joinAnd(written)} there first.` : "";
@@ -203,17 +274,33 @@ function howToApply(input: ExportInput, s: Shape): string[] {
     `In Windows PowerShell 5.1, run \`powershell -ExecutionPolicy Bypass -File .\\${ps}\` instead.`,
     `Windows blocks scripts downloaded from the internet: if you see "is not digitally signed", run \`Unblock-File .\\${ps}\` first.`,
   );
-  p(rerunNote(s));
+
+  out.push("### Re-running the AWS CLI scripts", "");
+  const cleanup = cleanupCommands(model, s);
+  if (!cleanup) {
+    p(rerunNote(s));
+  } else {
+    p(
+      rerunNote(s),
+      `To start over, run these bash commands in order (IAM refuses to delete ${s.principal ? "a policy that is still attached" : "a role that still has policies or an instance profile, or a policy that is still attached"}, with DeleteConflict):`,
+    );
+    block("sh", cleanup.join("\n"));
+    if (s.github) p("The GitHub OIDC provider stays: other roles in the account may use it.");
+  }
 
   out.push("### Terraform", "");
   block("sh", "terraform init && terraform apply");
   const tf = ["Run it in the folder that contains `main.tf` (in Windows PowerShell 5.1, which has no `&&`, run the two commands one after the other)."];
-  if (tfAsksRegion) {
+  if (tfNeedsRegion(input)) {
     tf.push(
       "`terraform apply` asks for `region`, the AWS region of your EKS cluster(s); pass it with `-var region=<region>` or set `TF_VAR_region` to skip the prompt.",
     );
   }
-  if (s.github) tf.push(`${GITHUB_PROVIDER_NOTE} uncomment the \`aws_iam_openid_connect_provider\` block in \`main.tf\` first.`);
+  if (s.github) {
+    tf.push(
+      `${GITHUB_PROVIDER_NOTE} uncomment the \`aws_iam_openid_connect_provider\` block in \`main.tf\` and add \`depends_on = [aws_iam_openid_connect_provider.github]\` to \`aws_iam_role.${tfLabel(model.name)}\` first.`,
+    );
+  }
   tf.push("Keep the `terraform.tfstate` file it writes: Terraform needs it to change or remove these resources later.");
   p(...tf);
 
@@ -237,7 +324,9 @@ function howToApply(input: ExportInput, s: Shape): string[] {
     );
   }
   if (s.github) {
-    cfn.push(`${GITHUB_PROVIDER_NOTE} add the \`GitHubOidcProvider\` resource described at the top of \`template.yaml\` first.`);
+    cfn.push(
+      `${GITHUB_PROVIDER_NOTE} add the \`GitHubOidcProvider\` resource described at the top of \`template.yaml\` and \`DependsOn: GitHubOidcProvider\` on \`Role\` first.`,
+    );
   }
   cfn.push(
     "Running the same command again updates the stack.",
@@ -254,6 +343,7 @@ function howToApply(input: ExportInput, s: Shape): string[] {
 
 function permissionsSection(s: Shape): string[] {
   const list = (xs: string[]): string => xs.map((x) => `\`${x}\``).join(", ");
+  const optional = (xs: string[]): string => (xs.length > 0 ? `; ${list(xs)} (only if you add the GitHub OIDC provider)` : "");
   const perms = permissions(s);
   return [
     "## Permissions you need to apply this",
@@ -261,12 +351,12 @@ function permissionsSection(s: Shape): string[] {
     "The credentials you apply with need these actions (AdministratorAccess has all of them):",
     "",
     `- **AWS CLI scripts:** ${list(perms.cli)}`,
-    `- **Terraform:** ${list(perms.terraform)}`,
-    ...(s.cfn ? [`- **CloudFormation:** ${list(perms.cfn)}`] : []),
+    `- **Terraform:** ${list(perms.terraform)}${optional(perms.tfOidc)}`,
+    ...(s.cfn ? [`- **CloudFormation:** ${list(perms.cfn)}${optional(perms.cfnOidc)}`] : []),
     "",
     [
       ...(s.cfn ? [`CloudFormation creates the resources with your credentials, so it needs the ${s.eksEntries ? "IAM and EKS" : "IAM"} actions too.`] : []),
-      "Removing the resources later needs the matching `Delete*`, `Detach*` and `Remove*` actions.",
+      "Removing the resources later needs these plus the matching `Delete*`, `Detach*` and `Remove*` actions and `List*` reads.",
     ].join(" "),
   ];
 }

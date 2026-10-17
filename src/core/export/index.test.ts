@@ -88,7 +88,9 @@ describe("exportAll", () => {
     expect(exportAll(input)).toEqual(BLOCKED);
   });
 
-  it("is blocked when there is nothing to export", () => {
-    expect(exportAll(build({ name: "empty" }))).toEqual(BLOCKED);
+  it("asks for a permission when there is nothing to export", () => {
+    const input = build({ name: "empty" });
+    expect(input.result.issues.some((i) => i.severity === "error")).toBe(false);
+    expect(exportAll(input)).toEqual({ ok: false, reason: "Add a permission before exporting." });
   });
 });

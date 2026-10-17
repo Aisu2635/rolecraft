@@ -35,7 +35,20 @@ pwsh -File .\attach-policy.ps1
 
 Run it in the folder that contains `attach-policy.ps1`. It writes `policy.json` there first. In Windows PowerShell 5.1, run `powershell -ExecutionPolicy Bypass -File .\attach-policy.ps1` instead. Windows blocks scripts downloaded from the internet: if you see "is not digitally signed", run `Unblock-File .\attach-policy.ps1` first.
 
-These scripts create resources once; re-running fails with EntityAlreadyExists. Delete the policy first or use Terraform/CloudFormation for repeatable deploys.
+### Re-running the AWS CLI scripts
+
+These scripts create resources once; re-running fails with EntityAlreadyExists. Delete the policy first or use Terraform/CloudFormation for repeatable deploys. To start over, run these bash commands in order (IAM refuses to delete a policy that is still attached, with DeleteConflict):
+
+```sh
+ROLE_NAME='deploy-bot-kubectl'
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+POLICY_ARN="arn:aws:iam::${ACCOUNT_ID}:policy/${ROLE_NAME}-policy"
+PRINCIPAL_NAME='deploy-bot'
+PRINCIPAL_ARN=$(aws iam get-user --user-name "$PRINCIPAL_NAME" --query User.Arn --output text)
+aws eks delete-access-entry --cluster-name 'prod' --principal-arn "$PRINCIPAL_ARN" --region 'eu-west-1'
+aws iam detach-user-policy --user-name "$PRINCIPAL_NAME" --policy-arn "$POLICY_ARN"
+aws iam delete-policy --policy-arn "$POLICY_ARN"
+```
 
 ### Terraform
 
@@ -59,6 +72,6 @@ The credentials you apply with need these actions (AdministratorAccess has all o
 
 - **AWS CLI scripts:** `iam:CreatePolicy`, `iam:AttachUserPolicy`, `iam:GetUser`, `eks:CreateAccessEntry`, `eks:AssociateAccessPolicy`
 - **Terraform:** `iam:CreatePolicy`, `iam:GetPolicy`, `iam:GetPolicyVersion`, `iam:AttachUserPolicy`, `iam:ListAttachedUserPolicies`, `iam:GetUser`, `eks:CreateAccessEntry`, `eks:DescribeAccessEntry`, `eks:AssociateAccessPolicy`, `eks:ListAssociatedAccessPolicies`
-- **CloudFormation:** `cloudformation:DescribeStacks`, `cloudformation:CreateChangeSet`, `cloudformation:DescribeChangeSet`, `cloudformation:ExecuteChangeSet`, `cloudformation:GetTemplateSummary`, `iam:CreatePolicy`, `iam:AttachUserPolicy`, `iam:GetPolicy`, `iam:GetPolicyVersion`, `iam:ListEntitiesForPolicy`, `eks:CreateAccessEntry`, `eks:DescribeAccessEntry`, `eks:AssociateAccessPolicy`, `eks:ListAssociatedAccessPolicies`
+- **CloudFormation:** `cloudformation:DescribeStacks`, `cloudformation:CreateChangeSet`, `cloudformation:DescribeChangeSet`, `cloudformation:ExecuteChangeSet`, `cloudformation:GetTemplateSummary`, `iam:CreatePolicy`, `iam:AttachUserPolicy`, `iam:GetPolicy`, `iam:GetPolicyVersion`, `iam:ListEntitiesForPolicy`, `eks:CreateAccessEntry`, `eks:DescribeAccessEntry`, `eks:AssociateAccessPolicy`, `eks:ListAssociatedAccessPolicies`, `eks:TagResource`
 
-CloudFormation creates the resources with your credentials, so it needs the IAM and EKS actions too. Removing the resources later needs the matching `Delete*`, `Detach*` and `Remove*` actions.
+CloudFormation creates the resources with your credentials, so it needs the IAM and EKS actions too. Removing the resources later needs these plus the matching `Delete*`, `Detach*` and `Remove*` actions and `List*` reads.

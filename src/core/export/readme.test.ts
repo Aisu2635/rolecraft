@@ -152,7 +152,7 @@ describe("exportReadme", () => {
     const md = readme(
       build({ name: "kube", trust: { kind: "service", service: "ec2" }, grants: [eksGrant, { ...eksGrant, id: "k2", scope: { type: "module", data: { cluster: "dev_1" } } }] }),
     );
-    expect(md).toContain("**EKS:** The clusters prod and dev\\_1 must use the authentication mode API or API_AND_CONFIG_MAP");
+    expect(md).toContain("**EKS:** The clusters prod and dev_1 must use the authentication mode API or API_AND_CONFIG_MAP");
   });
 
   it("EKS without a region explains where the scripts and stack run", () => {
@@ -236,6 +236,139 @@ describe("exportReadme", () => {
     expect(eks).toContain("eks:CreateAccessEntry");
   });
 
+  /** The bash cleanup block in the re-run subsection. */
+  const cleanup = (md: string): string | undefined => {
+    const sub = subsection(md, "Re-running the AWS CLI scripts") ?? "";
+    const m = /```sh\n([\s\S]*?)\n```/.exec(sub);
+    return m?.[1];
+  };
+  /** Asserts each needle appears in this order. */
+  const inOrder = (text: string, needles: string[]): void => {
+    let at = -1;
+    for (const n of needles) {
+      const i = text.indexOf(n, at + 1);
+      expect(i, n).toBeGreaterThan(at);
+      at = i;
+    }
+  };
+
+  it.each(names)("re-run note is shared by both scripts: %s", (n) => {
+    const md = readme(make(n));
+    const rerun = subsection(md, "Re-running the AWS CLI scripts") as string;
+    expect(rerun).toBeDefined();
+    expect(subsection(md, "AWS CLI — PowerShell")).not.toMatch(/re-running|Re-running/);
+    expect(subsection(md, "AWS CLI — bash")).not.toMatch(/re-running|Re-running/);
+  });
+
+  it("role cleanup: every created resource, in an order IAM accepts", () => {
+    const ec2 = cleanup(readme(make("ec2-ssm"))) as string;
+    inOrder(ec2, [
+      "ROLE_NAME='ec2-ops'",
+      "ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)",
+      'POLICY_ARN="arn:aws:iam::${ACCOUNT_ID}:policy/${ROLE_NAME}-policy"',
+      'aws iam remove-role-from-instance-profile --instance-profile-name "$ROLE_NAME" --role-name "$ROLE_NAME"',
+      'aws iam delete-instance-profile --instance-profile-name "$ROLE_NAME"',
+      'aws iam detach-role-policy --role-name "$ROLE_NAME" --policy-arn "$POLICY_ARN"',
+      'aws iam delete-policy --policy-arn "$POLICY_ARN"',
+      "aws iam detach-role-policy --role-name \"$ROLE_NAME\" --policy-arn 'arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore'",
+      'aws iam delete-role --role-name "$ROLE_NAME"',
+    ]);
+    const lambda = cleanup(readme(make("lambda-api"))) as string;
+    inOrder(lambda, [
+      'aws iam delete-role-policy --role-name "$ROLE_NAME" --policy-name "${ROLE_NAME}-inline"',
+      'aws iam delete-role --role-name "$ROLE_NAME"',
+    ]);
+    expect(lambda).not.toContain("delete-policy ");
+    expect(lambda).not.toContain("ACCOUNT_ID");
+    const eks = cleanup(readme(make("eks-kubectl"))) as string;
+    inOrder(eks, [
+      'ROLE_ARN=$(aws iam get-role --role-name "$ROLE_NAME" --query Role.Arn --output text)',
+      "aws eks delete-access-entry --cluster-name 'prod' --principal-arn \"$ROLE_ARN\"\n",
+      'aws iam delete-instance-profile',
+      'aws iam delete-role --role-name "$ROLE_NAME"',
+    ]);
+    const gh = readme(make("github-deploy"));
+    expect(cleanup(gh)).not.toContain("open-id-connect");
+    expect(subsection(gh, "Re-running the AWS CLI scripts")).toContain("The GitHub OIDC provider stays");
+  });
+
+  it("principal user with a managed policy and EKS: access entry, then detach and delete the policy", () => {
+    const md = readme(make("eks-user"));
+    const rerun = subsection(md, "Re-running the AWS CLI scripts") as string;
+    expect(rerun).toContain(
+      "These scripts create resources once; re-running fails with EntityAlreadyExists. Delete the policy first or use Terraform/CloudFormation for repeatable deploys.",
+    );
+    expect(rerun).toContain("DeleteConflict");
+    const c = cleanup(md) as string;
+    inOrder(c, [
+      "ROLE_NAME='deploy-bot-kubectl'",
+      "PRINCIPAL_NAME='deploy-bot'",
+      'PRINCIPAL_ARN=$(aws iam get-user --user-name "$PRINCIPAL_NAME" --query User.Arn --output text)',
+      "aws eks delete-access-entry --cluster-name 'prod' --principal-arn \"$PRINCIPAL_ARN\" --region 'eu-west-1'",
+      'aws iam detach-user-policy --user-name "$PRINCIPAL_NAME" --policy-arn "$POLICY_ARN"',
+      'aws iam delete-policy --policy-arn "$POLICY_ARN"',
+    ]);
+    expect(c).not.toContain("delete-user ");
+  });
+
+  it("principal group cleanup detaches before deleting", () => {
+    const c = cleanup(readme(make("s3-group"))) as string;
+    inOrder(c, [
+      "PRINCIPAL_NAME='analytics-team'",
+      'aws iam detach-group-policy --group-name "$PRINCIPAL_NAME" --policy-arn "$POLICY_ARN"',
+      'aws iam delete-policy --policy-arn "$POLICY_ARN"',
+    ]);
+    expect(c).not.toContain("eks");
+  });
+
+  it("re-run-safe scripts get no cleanup block; inline user with EKS only deletes the access entry", () => {
+    const safe = readme(
+      build({ name: "ssm-users", trust: { kind: "principal", target: "group", name: "ops" }, managedPolicyArns: [SSM] }),
+    );
+    expect(cleanup(safe)).toBeUndefined();
+    const eks = cleanup(
+      readme(
+        build({
+          name: "kube-inline",
+          policyMode: "inline",
+          trust: { kind: "principal", target: "user", name: "bob" },
+          grants: [eksGrant],
+        }),
+      ),
+    ) as string;
+    expect(eks).toContain("aws eks delete-access-entry --cluster-name 'prod' --principal-arn \"$PRINCIPAL_ARN\"");
+    expect(eks).not.toContain("delete-policy");
+    expect(eks).not.toContain("delete-user-policy");
+  });
+
+  it("cleanup quotes model values", () => {
+    const input = make("eks-kubectl");
+    input.model = { ...input.model, name: "x'y", grants: [{ ...eksGrant, scope: { type: "module", data: { cluster: "c$(rm)" } } }] };
+    const c = cleanup(readme(input)) as string;
+    expect(c).toContain("ROLE_NAME='x'\\''y'");
+    expect(c).toContain("--cluster-name 'c$(rm)'");
+  });
+
+  it("three ways when CloudFormation can't deploy, four otherwise", () => {
+    const arnOnly = readme(
+      build({ name: "ssm-users", trust: { kind: "principal", target: "group", name: "ops" }, managedPolicyArns: [SSM] }),
+    );
+    expect(arnOnly).toContain("Use **one** of the three ways below");
+    for (const n of names) expect(readme(make(n))).toContain("Use **one** of the four ways below");
+  });
+
+  it("GitHub: OIDC provider caveat and dependency notes", () => {
+    const md = readme(make("github-deploy"));
+    expect(section(md, "How to apply")).toContain(
+      "The scripts create the GitHub OIDC provider if your account doesn't have it; Terraform and CloudFormation only create it if you uncomment or add it",
+    );
+    expect(subsection(md, "Terraform")).toContain(
+      "uncomment the `aws_iam_openid_connect_provider` block in `main.tf` and add `depends_on = [aws_iam_openid_connect_provider.github]` to `aws_iam_role.github_deploy`",
+    );
+    expect(subsection(md, "CloudFormation")).toContain("and `DependsOn: GitHubOidcProvider` on `Role`");
+    expect(readme(make("lambda-api"))).not.toContain("OIDC");
+  });
+
   it("lists the permissions each method needs", () => {
     const perms = (n: string): string => section(readme(make(n)), "Permissions you need to apply this") as string;
     const line = (n: string, label: string): string =>
@@ -254,7 +387,21 @@ describe("exportReadme", () => {
 
     expect(line("github-deploy", "AWS CLI scripts")).toContain("iam:ListOpenIDConnectProviders");
     expect(line("github-deploy", "AWS CLI scripts")).toContain("iam:CreateOpenIDConnectProvider");
-    expect(line("github-deploy", "Terraform")).not.toContain("OpenIDConnect");
+    const OPTIONAL = "(only if you add the GitHub OIDC provider)";
+    expect(line("github-deploy", "Terraform")).toContain(
+      `\`iam:CreateOpenIDConnectProvider\`, \`iam:GetOpenIDConnectProvider\` ${OPTIONAL}`,
+    );
+    expect(line("github-deploy", "CloudFormation")).toContain(
+      `\`iam:CreateOpenIDConnectProvider\`, \`iam:GetOpenIDConnectProvider\`, \`iam:TagOpenIDConnectProvider\` ${OPTIONAL}`,
+    );
+    expect(line("github-deploy", "AWS CLI scripts")).not.toContain(OPTIONAL);
+    expect(perms("lambda-api")).not.toContain("OpenIDConnect");
+    for (const n of ["eks-kubectl", "eks-user"]) expect(line(n, "CloudFormation")).toContain("`eks:TagResource`");
+    expect(line("eks-kubectl", "Terraform")).not.toContain("eks:TagResource");
+    expect(perms("s3-group")).not.toContain("eks:");
+    expect(perms("s3-group")).toContain(
+      "plus the matching `Delete*`, `Detach*` and `Remove*` actions and `List*` reads",
+    );
 
     expect(line("lambda-api", "AWS CLI scripts")).toContain("iam:PutRolePolicy");
     expect(line("lambda-api", "AWS CLI scripts")).not.toContain("iam:CreatePolicy");
@@ -303,6 +450,23 @@ describe("exportReadme", () => {
     expect(md).toContain("- \\- dash\n");
     expect(md).toContain("- \\+ plus\n");
     expect(md).toContain("- \\> quote\n");
+  });
+
+  it("escapeMarkdown trims, and leaves intraword underscores and mid-text + alone", () => {
+    expect(escapeMarkdown("  my_app_role  ")).toBe("my_app_role");
+    expect(escapeMarkdown("\n Can use a+b\n")).toBe("Can use a+b");
+    expect(escapeMarkdown("_lead and trail_")).toBe("\\_lead and trail\\_");
+    expect(escapeMarkdown("a _b_ c")).toBe("a \\_b\\_ c");
+    // A run of underscores is not intraword at its inner edges, so it stays escaped.
+    expect(escapeMarkdown("x__y")).toBe("x\\_\\_y");
+    expect(escapeMarkdown("+ list")).toBe("\\+ list");
+    expect(escapeMarkdown("  # heading")).toBe("\\# heading");
+  });
+
+  it("names with underscores stay readable in the title", () => {
+    const input = make("lambda-api");
+    input.model = { ...input.model, name: "my_app_role" };
+    expect(readme(input).startsWith("# my_app_role\n")).toBe(true);
   });
 
   it("escapeMarkdown leaves plain text readable", () => {

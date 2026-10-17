@@ -37,6 +37,17 @@ function resource(type: string, label: string, attrs: Attr[], json?: [key: strin
   return lines.join("\n");
 }
 
+/**
+ * Whether main.tf declares `variable "region"`: EKS access entries are created (role with a trust policy, or a
+ * principal user — groups only get a comment) and the model has no region.
+ */
+export function tfNeedsRegion(input: ExportInput): boolean {
+  const { model, result } = input;
+  const trust = model.trust;
+  if (model.region || eksClusters(model.grants).length === 0) return false;
+  return trust.kind === "principal" ? trust.target === "user" : result.trust !== null;
+}
+
 /** `terraform {}` and the provider (plus a region variable when EKS needs a region we don't know). */
 function preamble(region: string | undefined, needsEksRegion: boolean): string[] {
   const provider = (value: string): string => ['provider "aws" {', `  region = ${value}`, "}"].join("\n");
@@ -270,8 +281,7 @@ export function exportTerraform(input: ExportInput): ExportFile {
   if (trust.kind === "principal") {
     return finish([
       [HEADER, `# Creates a permissions policy and attaches it to an existing IAM ${trust.target}.`].join("\n"),
-      // Groups get only a comment (no access entries), so they don't need the EKS region.
-      ...preamble(model.region, clusters.length > 0 && trust.target === "user"),
+      ...preamble(model.region, tfNeedsRegion(input)),
       ...principalBlocks(input, trust, label, clusters),
     ]);
   }
@@ -285,7 +295,7 @@ export function exportTerraform(input: ExportInput): ExportFile {
   }
   return finish([
     [HEADER, "# Creates an IAM role with its trust policy and permissions."].join("\n"),
-    ...preamble(model.region, clusters.length > 0),
+    ...preamble(model.region, tfNeedsRegion(input)),
     ...roleBlocks(input, result.trust, label, clusters),
   ]);
 }

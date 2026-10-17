@@ -20,6 +20,8 @@ Use **one** of the four ways below: each creates the same resources.
 
 **Prerequisites:** AWS CLI v2 configured with credentials for the target account (`aws sts get-caller-identity` shows which one). Terraform also needs Terraform ≥ 1.9; `terraform init` installs the AWS provider (`>= 5.81, < 7.0`).
 
+**GitHub OIDC provider:** The scripts create the GitHub OIDC provider if your account doesn't have it; Terraform and CloudFormation only create it if you uncomment or add it (see below).
+
 ### AWS CLI — bash
 
 ```sh
@@ -36,7 +38,20 @@ pwsh -File .\create-role.ps1
 
 Run it in the folder that contains `create-role.ps1`. It writes `trust.json` and `policy.json` there first. In Windows PowerShell 5.1, run `powershell -ExecutionPolicy Bypass -File .\create-role.ps1` instead. Windows blocks scripts downloaded from the internet: if you see "is not digitally signed", run `Unblock-File .\create-role.ps1` first.
 
-These scripts create resources once; re-running fails with EntityAlreadyExists. Delete the role first or use Terraform/CloudFormation for repeatable deploys.
+### Re-running the AWS CLI scripts
+
+These scripts create resources once; re-running fails with EntityAlreadyExists. Delete the role first or use Terraform/CloudFormation for repeatable deploys. To start over, run these bash commands in order (IAM refuses to delete a role that still has policies or an instance profile, or a policy that is still attached, with DeleteConflict):
+
+```sh
+ROLE_NAME='github-deploy'
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+POLICY_ARN="arn:aws:iam::${ACCOUNT_ID}:policy/${ROLE_NAME}-policy"
+aws iam detach-role-policy --role-name "$ROLE_NAME" --policy-arn "$POLICY_ARN"
+aws iam delete-policy --policy-arn "$POLICY_ARN"
+aws iam delete-role --role-name "$ROLE_NAME"
+```
+
+The GitHub OIDC provider stays: other roles in the account may use it.
 
 ### Terraform
 
@@ -44,7 +59,7 @@ These scripts create resources once; re-running fails with EntityAlreadyExists. 
 terraform init && terraform apply
 ```
 
-Run it in the folder that contains `main.tf` (in Windows PowerShell 5.1, which has no `&&`, run the two commands one after the other). If your account doesn't have the GitHub OIDC provider yet, uncomment the `aws_iam_openid_connect_provider` block in `main.tf` first. Keep the `terraform.tfstate` file it writes: Terraform needs it to change or remove these resources later.
+Run it in the folder that contains `main.tf` (in Windows PowerShell 5.1, which has no `&&`, run the two commands one after the other). If your account doesn't have the GitHub OIDC provider yet, uncomment the `aws_iam_openid_connect_provider` block in `main.tf` and add `depends_on = [aws_iam_openid_connect_provider.github]` to `aws_iam_role.github_deploy` first. Keep the `terraform.tfstate` file it writes: Terraform needs it to change or remove these resources later.
 
 ### CloudFormation
 
@@ -52,14 +67,14 @@ Run it in the folder that contains `main.tf` (in Windows PowerShell 5.1, which h
 aws cloudformation deploy --template-file template.yaml --stack-name github-deploy --capabilities CAPABILITY_NAMED_IAM --no-fail-on-empty-changeset
 ```
 
-If your account doesn't have the GitHub OIDC provider yet, add the `GitHubOidcProvider` resource described at the top of `template.yaml` first. Running the same command again updates the stack. If the first deploy fails, delete the stack before deploying again: `aws cloudformation delete-stack --stack-name github-deploy`.
+If your account doesn't have the GitHub OIDC provider yet, add the `GitHubOidcProvider` resource described at the top of `template.yaml` and `DependsOn: GitHubOidcProvider` on `Role` first. Running the same command again updates the stack. If the first deploy fails, delete the stack before deploying again: `aws cloudformation delete-stack --stack-name github-deploy`.
 
 ## Permissions you need to apply this
 
 The credentials you apply with need these actions (AdministratorAccess has all of them):
 
 - **AWS CLI scripts:** `iam:ListOpenIDConnectProviders`, `iam:CreateOpenIDConnectProvider`, `iam:CreateRole`, `iam:CreatePolicy`, `iam:AttachRolePolicy`
-- **Terraform:** `iam:CreateRole`, `iam:GetRole`, `iam:ListRolePolicies`, `iam:ListAttachedRolePolicies`, `iam:CreatePolicy`, `iam:GetPolicy`, `iam:GetPolicyVersion`, `iam:AttachRolePolicy`
-- **CloudFormation:** `cloudformation:DescribeStacks`, `cloudformation:CreateChangeSet`, `cloudformation:DescribeChangeSet`, `cloudformation:ExecuteChangeSet`, `cloudformation:GetTemplateSummary`, `iam:CreateRole`, `iam:GetRole`, `iam:ListRolePolicies`, `iam:ListAttachedRolePolicies`, `iam:CreatePolicy`, `iam:GetPolicy`, `iam:GetPolicyVersion`, `iam:ListEntitiesForPolicy`, `iam:AttachRolePolicy`
+- **Terraform:** `iam:CreateRole`, `iam:GetRole`, `iam:ListRolePolicies`, `iam:ListAttachedRolePolicies`, `iam:CreatePolicy`, `iam:GetPolicy`, `iam:GetPolicyVersion`, `iam:AttachRolePolicy`; `iam:CreateOpenIDConnectProvider`, `iam:GetOpenIDConnectProvider` (only if you add the GitHub OIDC provider)
+- **CloudFormation:** `cloudformation:DescribeStacks`, `cloudformation:CreateChangeSet`, `cloudformation:DescribeChangeSet`, `cloudformation:ExecuteChangeSet`, `cloudformation:GetTemplateSummary`, `iam:CreateRole`, `iam:GetRole`, `iam:ListRolePolicies`, `iam:ListAttachedRolePolicies`, `iam:CreatePolicy`, `iam:GetPolicy`, `iam:GetPolicyVersion`, `iam:ListEntitiesForPolicy`, `iam:AttachRolePolicy`; `iam:CreateOpenIDConnectProvider`, `iam:GetOpenIDConnectProvider`, `iam:TagOpenIDConnectProvider` (only if you add the GitHub OIDC provider)
 
-CloudFormation creates the resources with your credentials, so it needs the IAM actions too. Removing the resources later needs the matching `Delete*`, `Detach*` and `Remove*` actions.
+CloudFormation creates the resources with your credentials, so it needs the IAM actions too. Removing the resources later needs these plus the matching `Delete*`, `Detach*` and `Remove*` actions and `List*` reads.

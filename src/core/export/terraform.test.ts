@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { REFERENCE_CASES } from "./__fixtures__/cases";
 import { shortHash } from "./eks";
 import { stringifyPolicy } from "./json";
-import { exportTerraform } from "./terraform";
+import { exportTerraform, tfNeedsRegion } from "./terraform";
 import type { ExportInput } from "./types";
 
 const names = Object.keys(REFERENCE_CASES);
@@ -265,5 +265,30 @@ describe("exportTerraform", () => {
     }).content;
     expect(c).toContain(`"eks_admin_cli_eks_prod_a_${shortHash("prod-a")}_view"`);
     expect(c).toContain(`depends_on = [aws_eks_access_entry.eks_admin_cli_eks_prod_a_${shortHash("prod-a")}]`);
+  });
+});
+
+describe("tfNeedsRegion", () => {
+  const eks = {
+    id: "k",
+    service: "eks",
+    module: "eks",
+    scope: { type: "module" as const, data: { cluster: "prod" } },
+    access: { type: "preset" as const, preset: "kubectl" },
+  };
+  it.each(names)("matches the region variable in main.tf: %s", (n) => {
+    const input = make(n);
+    expect(tfNeedsRegion(input)).toBe(exportTerraform(input).content.includes('variable "region"'));
+  });
+  it("role or user with EKS clusters and no region; never a group, a region set, or no trust", () => {
+    expect(tfNeedsRegion(make("eks-kubectl"))).toBe(true);
+    const user = make("eks-user");
+    expect(tfNeedsRegion(user)).toBe(false);
+    expect(tfNeedsRegion({ ...user, model: { ...user.model, region: undefined } })).toBe(true);
+    const group = make("s3-group");
+    expect(tfNeedsRegion({ ...group, model: { ...group.model, grants: [eks] } })).toBe(false);
+    const role = make("eks-kubectl");
+    expect(tfNeedsRegion({ ...role, result: { ...role.result, trust: null } })).toBe(false);
+    expect(tfNeedsRegion(make("lambda-api"))).toBe(false);
   });
 });

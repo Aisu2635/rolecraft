@@ -33,7 +33,18 @@ pwsh -File .\create-role.ps1
 
 Run it in the folder that contains `create-role.ps1`. It writes `trust.json` and `policy.json` there first. In Windows PowerShell 5.1, run `powershell -ExecutionPolicy Bypass -File .\create-role.ps1` instead. Windows blocks scripts downloaded from the internet: if you see "is not digitally signed", run `Unblock-File .\create-role.ps1` first.
 
-These scripts create resources once; re-running fails with EntityAlreadyExists. Delete the role first or use Terraform/CloudFormation for repeatable deploys.
+### Re-running the AWS CLI scripts
+
+These scripts create resources once; re-running fails with EntityAlreadyExists. Delete the role first or use Terraform/CloudFormation for repeatable deploys. To start over, run these bash commands in order (IAM refuses to delete a role that still has policies or an instance profile, or a policy that is still attached, with DeleteConflict):
+
+```sh
+ROLE_NAME='audit-reader'
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+POLICY_ARN="arn:aws:iam::${ACCOUNT_ID}:policy/${ROLE_NAME}-policy"
+aws iam detach-role-policy --role-name "$ROLE_NAME" --policy-arn "$POLICY_ARN"
+aws iam delete-policy --policy-arn "$POLICY_ARN"
+aws iam delete-role --role-name "$ROLE_NAME"
+```
 
 ### Terraform
 
@@ -59,4 +70,4 @@ The credentials you apply with need these actions (AdministratorAccess has all o
 - **Terraform:** `iam:CreateRole`, `iam:GetRole`, `iam:ListRolePolicies`, `iam:ListAttachedRolePolicies`, `iam:CreatePolicy`, `iam:GetPolicy`, `iam:GetPolicyVersion`, `iam:AttachRolePolicy`
 - **CloudFormation:** `cloudformation:DescribeStacks`, `cloudformation:CreateChangeSet`, `cloudformation:DescribeChangeSet`, `cloudformation:ExecuteChangeSet`, `cloudformation:GetTemplateSummary`, `iam:CreateRole`, `iam:GetRole`, `iam:ListRolePolicies`, `iam:ListAttachedRolePolicies`, `iam:CreatePolicy`, `iam:GetPolicy`, `iam:GetPolicyVersion`, `iam:ListEntitiesForPolicy`, `iam:AttachRolePolicy`
 
-CloudFormation creates the resources with your credentials, so it needs the IAM actions too. Removing the resources later needs the matching `Delete*`, `Detach*` and `Remove*` actions.
+CloudFormation creates the resources with your credentials, so it needs the IAM actions too. Removing the resources later needs these plus the matching `Delete*`, `Detach*` and `Remove*` actions and `List*` reads.
