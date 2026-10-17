@@ -3,13 +3,15 @@ import iamRaw from "../../../public/data/svc/iam.json";
 import stsRaw from "../../../public/data/svc/sts.json";
 import kmsRaw from "../../../public/data/svc/kms.json";
 import ec2Raw from "../../../public/data/svc/ec2.json";
+import lambdaRaw from "../../../public/data/svc/lambda.json";
+import logsRaw from "../../../public/data/svc/logs.json";
 import { createCatalog } from "../catalog/catalog";
 import { generate } from "../generate";
 import { createEmptyModel, type Grant, type RoleModel } from "../model/model";
 import type { Issue, PolicyDocument, SlimService, Statement } from "../types";
 import { lint } from "./lint";
 
-const catalog = createCatalog([iamRaw, stsRaw, kmsRaw, ec2Raw] as unknown as SlimService[]);
+const catalog = createCatalog([iamRaw, stsRaw, kmsRaw, ec2Raw, lambdaRaw, logsRaw] as unknown as SlimService[]);
 
 const doc = (...s: Statement[]): PolicyDocument => ({ Version: "2012-10-17", Statement: s });
 const allow = (Action: string | string[], Resource: string | string[]): Statement => ({
@@ -252,5 +254,134 @@ describe("review fixes", () => {
     expect(ids(run(p, { grants: [g(["arn:aws:s3:::bucket"])] }))).not.toContain("L_UNUSED_ARN");
     const unknownSvc: Grant = { ...g(["arn:aws:ec2:*:*:vpc/v-1"]), service: "nosuch" };
     expect(ids(run(p, { grants: [unknownSvc] }))).not.toContain("L_UNUSED_ARN");
+  });
+});
+
+describe("L_PASSROLE_STAR broad resources", () => {
+  it("flags wildcard-only role names and account-wide iam ARNs", () => {
+    for (const r of [
+      "arn:aws:iam::123456789012:role/*",
+      "arn:aws:iam::123456789012:role/?*",
+      "arn:aws:iam::*:role/*",
+      "arn:aws:iam::*:*",
+      "arn:aws:iam::123456789012:*",
+    ]) {
+      expect(ids(run(doc(allow("iam:PassRole", r))))).toContain("L_PASSROLE_STAR");
+    }
+  });
+  it("does not flag path-scoped or named roles", () => {
+    for (const r of ["arn:aws:iam::123456789012:role/svc/*", "arn:aws:iam::123456789012:role/app-*", "arn:aws:iam::123456789012:role/x"]) {
+      expect(ids(run(doc(allow("iam:PassRole", r))))).not.toContain("L_PASSROLE_STAR");
+    }
+  });
+});
+
+describe("L_SENSITIVE permissions management", () => {
+  it("flags iam:AddUserToGroup on a group ARN", () => {
+    const i = run(doc(allow("iam:AddUserToGroup", "arn:aws:iam::123456789012:group/devs"))).find(
+      (x) => x.id === "L_SENSITIVE",
+    );
+    expect(i?.message).toContain("iam:AddUserToGroup");
+  });
+  it("flags any iam Permissions management action, not other services", () => {
+    expect(ids(run(doc(allow("iam:CreateRole", "arn:aws:iam::1:role/x"))))).toContain("L_SENSITIVE");
+    const pm = ec2Raw.actions.find((a) => a.level === "Permissions management");
+    expect(pm).toBeDefined();
+    expect(ids(run(doc(allow(`ec2:${pm?.name}`, "arn:aws:ec2:*:*:instance/*"))))).not.toContain("L_SENSITIVE");
+    const iamPm = iamRaw.actions.filter((a) => a.level === "Permissions management" && !/^(Create|Put|Attach|Update|Delete)/.test(a.name));
+    expect(iamPm.length).toBeGreaterThan(0);
+    for (const a of iamPm.slice(0, 5)) {
+      expect(ids(run(doc(allow(`iam:${a.name}`, "arn:aws:iam::1:role/x"))))).toContain("L_SENSITIVE");
+    }
+  });
+});
+
+describe("L_QUALIFIED_ONLY", () => {
+  const fnArn = "arn:aws:lambda:us-east-1:123456789012:function:f";
+  it("warns when only the :* qualified function ARN is granted", () => {
+    const i = run(doc(allow("lambda:InvokeFunction", `${fnArn}:*`))).find((x) => x.id === "L_QUALIFIED_ONLY");
+    expect(i?.severity).toBe("warning");
+    expect(i?.message).toBe("Only covers versions and aliases of f; add the bare function ARN for unqualified calls.");
+  });
+  it("does not warn with the bare ARN, for alias-only actions, or module invoke output", () => {
+    expect(ids(run(doc(allow("lambda:InvokeFunction", [fnArn, `${fnArn}:*`]))))).not.toContain("L_QUALIFIED_ONLY");
+    expect(ids(run(doc(allow("lambda:GetProvisionedConcurrencyConfig", `${fnArn}:*`))))).not.toContain("L_QUALIFIED_ONLY");
+    const r = generate(
+      {
+        ...createEmptyModel(),
+        grants: [
+          {
+            id: "g1",
+            service: "lambda",
+            module: "lambda",
+            scope: { type: "module", data: { functionName: "f" } },
+            access: { type: "preset", preset: "invoke" },
+          },
+        ],
+      },
+      catalog,
+    );
+    expect(ids(r.issues)).not.toContain("L_QUALIFIED_ONLY");
+  });
+  it("gives info for log-group-only logs actions on log-group:<n>:* alone", () => {
+    const lg = "arn:aws:logs:us-east-1:123456789012:log-group:/app/x";
+    const i = run(doc(allow("logs:FilterLogEvents", `${lg}:*`))).find((x) => x.id === "L_QUALIFIED_ONLY");
+    expect(i?.severity).toBe("info");
+    expect(i?.message).toBe(
+      `Some CloudWatch Logs APIs check the bare log-group ARN; if you see AccessDenied, add ${lg}.`,
+    );
+    expect(ids(run(doc(allow("logs:FilterLogEvents", [lg, `${lg}:*`]))))).not.toContain("L_QUALIFIED_ONLY");
+    expect(ids(run(doc(allow("logs:GetLogEvents", `${lg}:*`))))).not.toContain("L_QUALIFIED_ONLY");
+  });
+  it("ignores Deny, missing catalog services and non-matching resources", () => {
+    expect(ids(run(doc({ Effect: "Deny", Action: "lambda:InvokeFunction", Resource: `${fnArn}:*` })))).not.toContain("L_QUALIFIED_ONLY");
+    const bare = createCatalog([iamRaw] as unknown as SlimService[]);
+    expect(ids(lint(createEmptyModel(), doc(allow("lambda:InvokeFunction", `${fnArn}:*`)), null, bare))).not.toContain("L_QUALIFIED_ONLY");
+    expect(ids(run(doc(allow("lambda:InvokeFunction", "*"))))).not.toContain("L_QUALIFIED_ONLY");
+    expect(ids(run(doc(allow("lambda:*", `${fnArn}:*`))))).toContain("L_QUALIFIED_ONLY");
+  });
+});
+
+describe("L_EC2_TAG_ESCALATION", () => {
+  const ec2g = (id: string, preset: string, selector: unknown): Grant => ({
+    id,
+    service: "ec2",
+    module: "ec2",
+    scope: { type: "module", data: { selector } },
+    access: { type: "preset", preset },
+  });
+  const tagSel = (key: string, value: string) => ({ type: "tag", key, value });
+  const esc = (grants: Grant[]) =>
+    run(doc(allow("ec2:DescribeInstances", "*")), { grants }).filter((x) => x.id === "L_EC2_TAG_ESCALATION");
+
+  it("warns when a tags grant coexists with another tag-scoped EC2 grant", () => {
+    const r = esc([ec2g("a", "tags", tagSel("Env", "dev")), ec2g("b", "start-stop", tagSel("Team", "x"))]);
+    expect(r).toHaveLength(1);
+    expect(r[0]).toMatchObject({ severity: "warning", grantId: "a" });
+    expect(r[0]?.message).toBe(
+      "This role can add tags to instances, which could move them into the scope of another EC2 permission in this role (Team=x). Restrict the tag keys or split into separate roles.",
+    );
+  });
+  it("warns for a different value of the same key", () => {
+    expect(esc([ec2g("a", "tags", tagSel("Env", "dev")), ec2g("b", "terminate", tagSel("Env", "prod"))])).toHaveLength(1);
+  });
+  it("stays quiet for same tag, non-tag selectors, view grants, no tags grant, bad data", () => {
+    expect(esc([ec2g("a", "tags", tagSel("Env", "dev")), ec2g("b", "start-stop", tagSel("Env", "dev"))])).toHaveLength(0);
+    expect(esc([ec2g("a", "tags", tagSel("Env", "dev")), ec2g("b", "start-stop", { type: "all" })])).toHaveLength(0);
+    expect(esc([ec2g("a", "tags", tagSel("Env", "dev")), ec2g("b", "view", tagSel("Team", "x"))])).toHaveLength(0);
+    expect(esc([ec2g("a", "start-stop", tagSel("Env", "dev")), ec2g("b", "start-stop", tagSel("Team", "x"))])).toHaveLength(0);
+    expect(esc([ec2g("a", "tags", { type: "all" }), ec2g("b", "start-stop", tagSel("Team", "x"))])).toHaveLength(0);
+    expect(esc([ec2g("a", "tags", tagSel("Env", "dev")), ec2g("b", "start-stop", { type: "tag" })])).toHaveLength(0);
+    const generic: Grant = { id: "c", service: "ec2", scope: { type: "all" }, access: { type: "levels", levels: ["Read"] } };
+    expect(esc([ec2g("a", "tags", tagSel("Env", "dev")), generic])).toHaveLength(0);
+  });
+  it("reports each distinct other tag once", () => {
+    const r = esc([
+      ec2g("a", "tags", tagSel("Env", "dev")),
+      ec2g("b", "start-stop", tagSel("Team", "x")),
+      ec2g("c", "terminate", tagSel("Team", "x")),
+      ec2g("d", "terminate", tagSel("Team", "y")),
+    ]);
+    expect(r.map((x) => x.message.match(/\((.*?)\)/)?.[1])).toStrictEqual(["Team=x", "Team=y"]);
   });
 });

@@ -44,8 +44,7 @@ const sortedStrs = (x: unknown): unknown => (Array.isArray(x) ? [...x].sort() : 
 function dedupeStatements(statements: Statement[]): Statement[] {
   const seen = new Set<string>();
   return statements.filter((s) => {
-    const { Sid: _sid, ...rest } = s;
-    const key = JSON.stringify({ ...rest, Action: sortedStrs(s.Action), Resource: sortedStrs(s.Resource) });
+    const key = JSON.stringify({ Effect: s.Effect, Condition: s.Condition, Action: sortedStrs(s.Action), Resource: sortedStrs(s.Resource) });
     if (seen.has(key)) return false;
     seen.add(key);
     return true;

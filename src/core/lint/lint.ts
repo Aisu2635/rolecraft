@@ -1,6 +1,8 @@
 import { matchableTypes } from "../arn";
 import { isValidArnSyntax } from "../arn-syntax";
 import type { Catalog } from "../catalog/catalog";
+import { isDeletion } from "../destructive";
+import { ec2DataSchema } from "../engine/modules/ec2";
 import { globMatch } from "../glob";
 import type { RoleModel } from "../model/model";
 import type { AccessLevel, Issue, PolicyDocument, SlimAction, SlimService, Statement } from "../types";
@@ -20,6 +22,7 @@ const SENSITIVE_GLOBS: { pattern: string; needsStar: boolean }[] = [
   { pattern: "iam:Attach*", needsStar: false },
   { pattern: "iam:Update*", needsStar: false },
   { pattern: "iam:Delete*", needsStar: false },
+  { pattern: "iam:AddUserToGroup", needsStar: false },
   { pattern: "sts:AssumeRole", needsStar: true },
 ];
 /** Sensitive only when granted as a full service wildcard. */
@@ -29,6 +32,11 @@ const strs = (x: unknown): string[] =>
   typeof x === "string" ? [x] : Array.isArray(x) ? x.filter((v): v is string => typeof v === "string") : [];
 
 const hasStar = (resource: unknown): boolean => strs(resource).includes("*");
+
+/** Resources that let iam:PassRole pass (effectively) any role. */
+const BROAD_PASSROLE = [/^arn:[^:]*:iam::[^:]*:\*$/, /^arn:[^:]*:iam::[^:]*:role\/[*?]+$/];
+const broadPassRole = (resource: unknown): string[] =>
+  strs(resource).filter((r) => r === "*" || BROAD_PASSROLE.some((re) => re.test(r)));
 
 function list(names: string[]): string {
   const sorted = [...new Set(names)].sort();
@@ -72,11 +80,12 @@ function lintStatement(s: Statement, index: number, catalog: Catalog): Issue[] {
   const star = hasStar(s.Resource);
 
   const passRole = actions.filter((a) => globMatch(a.toLowerCase(), "iam:passrole"));
-  if (star && passRole.length > 0) {
+  const broad = broadPassRole(s.Resource);
+  if (broad.length > 0 && passRole.length > 0) {
     issues.push({
       id: "L_PASSROLE_STAR",
       severity: "error",
-      message: `${list(passRole)} on Resource "*" lets this role pass any IAM role to an AWS service, which can escalate privileges. Restrict it to specific role ARNs.`,
+      message: `${list(passRole)} on Resource "${broad[0] as string}" lets this role pass any IAM role to an AWS service, which can escalate privileges. Restrict it to specific role ARNs.`,
       path,
     });
   }
@@ -110,7 +119,7 @@ function lintStatement(s: Statement, index: number, catalog: Catalog): Issue[] {
       else {
         for (const a of r) {
           const bare = a.name.slice(a.name.indexOf(":") + 1);
-          if (a.level === "Permissions management" || /delet|purge/i.test(bare) || /^terminate/i.test(bare)) names.push(a.name);
+          if (a.level === "Permissions management" || isDeletion(bare)) names.push(a.name);
         }
       }
     }
@@ -133,6 +142,7 @@ function lintStatement(s: Statement, index: number, catalog: Catalog): Issue[] {
     if (r === "all") continue;
     for (const a of r) {
       const lower = a.name.toLowerCase();
+      if (lower.startsWith("iam:") && a.level === "Permissions management") sensitive.push(a.name);
       if (SENSITIVE_GLOBS.some((p) => (star || !p.needsStar) && globMatch(p.pattern.toLowerCase(), lower))) {
         sensitive.push(a.name);
       }
@@ -145,6 +155,99 @@ function lintStatement(s: Statement, index: number, catalog: Catalog): Issue[] {
       message: `${list(sensitive)} ${new Set(sensitive).size === 1 ? "is a sensitive permission" : "are sensitive permissions"} that can change IAM, assume other roles, or manage keys and accounts. Confirm this role needs them.`,
       path,
     });
+  }
+  issues.push(...lintQualifiedOnly(s, actions, index, catalog));
+  return issues;
+}
+
+const LAMBDA_QUALIFIED = /^(arn:[^:]*:lambda:[^:]*:[^:]*:function:)([^:]+):\*$/;
+const LOGS_QUALIFIED = /^(arn:[^:]*:logs:[^:]*:[^:]*:log-group:)([^:]+):\*$/;
+
+/** Catalog actions of `serviceKey` granted by these action strings, with their resource types. */
+function grantedCatalogActions(actions: string[], serviceKey: string, catalog: Catalog): SlimAction[] {
+  const svc = catalog.getService(serviceKey);
+  if (!svc) return [];
+  const out = new Map<string, SlimAction>();
+  for (const granted of actions) {
+    const g = granted.toLowerCase();
+    if (!g.startsWith(`${serviceKey}:`) && g !== "*") continue;
+    for (const a of svc.actions) {
+      if (globMatch(g, `${svc.key}:${a.name}`.toLowerCase())) out.set(a.name, a);
+    }
+  }
+  return [...out.values()];
+}
+
+function lintQualifiedOnly(s: Statement, actions: string[], index: number, catalog: Catalog): Issue[] {
+  const issues: Issue[] = [];
+  const path = `Statement[${index}]`;
+  const resources = strs(s.Resource);
+  const has = new Set(resources);
+
+  const fnActions = grantedCatalogActions(actions, "lambda", catalog).filter((a) => a.resources.includes("function"));
+  if (fnActions.length > 0) {
+    for (const r of resources) {
+      const m = LAMBDA_QUALIFIED.exec(r);
+      if (m && !has.has(`${m[1] as string}${m[2] as string}`)) {
+        issues.push({
+          id: "L_QUALIFIED_ONLY",
+          severity: "warning",
+          message: `Only covers versions and aliases of ${m[2] as string}; add the bare function ARN for unqualified calls.`,
+          path,
+        });
+      }
+    }
+  }
+
+  const groupActions = grantedCatalogActions(actions, "logs", catalog).filter(
+    (a) => a.resources.length === 1 && a.resources[0] === "log-group",
+  );
+  if (groupActions.length > 0) {
+    for (const r of resources) {
+      const m = LOGS_QUALIFIED.exec(r);
+      const bare = m ? `${m[1] as string}${m[2] as string}` : "";
+      if (m && !has.has(bare)) {
+        issues.push({
+          id: "L_QUALIFIED_ONLY",
+          severity: "info",
+          message: `Some CloudWatch Logs APIs check the bare log-group ARN; if you see AccessDenied, add ${bare}.`,
+          path,
+        });
+      }
+    }
+  }
+  return issues;
+}
+
+function lintEc2TagEscalation(model: RoleModel): Issue[] {
+  interface Tagged {
+    grantId: string;
+    preset: string;
+    key: string;
+    value: string;
+  }
+  const tagged: Tagged[] = [];
+  for (const g of model.grants) {
+    if (g.module !== "ec2" || g.service !== "ec2" || g.access.type !== "preset" || g.scope.type !== "module") continue;
+    const parsed = ec2DataSchema.safeParse(g.scope.data);
+    if (!parsed.success || parsed.data.selector.type !== "tag") continue;
+    tagged.push({ grantId: g.id, preset: g.access.preset, key: parsed.data.selector.key, value: parsed.data.selector.value });
+  }
+  const issues: Issue[] = [];
+  for (const t of tagged.filter((x) => x.preset === "tags")) {
+    const seen = new Set<string>();
+    for (const o of tagged) {
+      if (o.grantId === t.grantId || o.preset === "view" || (o.key === t.key && o.value === t.value)) continue;
+      const kv = `${o.key}=${o.value}`;
+      if (seen.has(kv)) continue;
+      seen.add(kv);
+      issues.push({
+        id: "L_EC2_TAG_ESCALATION",
+        severity: "warning",
+        message: `This role can add tags to instances, which could move them into the scope of another EC2 permission in this role (${kv}). Restrict the tag keys or split into separate roles.`,
+        grantId: t.grantId,
+      });
+    }
   }
   return issues;
 }
@@ -223,6 +326,7 @@ export function lint(
         });
       }
       issues.push(...lintUnusedArns(model, policy, catalog));
+      issues.push(...lintEc2TagEscalation(model));
     }
     if (trust) issues.push(...lintGithubSaml(trust));
     return issues;
