@@ -63,7 +63,8 @@ cat > policy.json <<'ROLECRAFT_EOF'
 ROLECRAFT_EOF
 
 # GitHub Actions needs an OIDC identity provider in this account (created once).
-if ! aws iam list-open-id-connect-providers --query "OpenIDConnectProviderList[?ends_with(Arn, '/token.actions.githubusercontent.com')].Arn" --output text | grep -q .; then aws iam create-open-id-connect-provider --url https://token.actions.githubusercontent.com --client-id-list sts.amazonaws.com; fi
+existing=$(aws iam list-open-id-connect-providers --query "OpenIDConnectProviderList[?ends_with(Arn, '/token.actions.githubusercontent.com')].Arn" --output text)
+if [ -z "$existing" ] || [ "$existing" = "None" ]; then aws iam create-open-id-connect-provider --url https://token.actions.githubusercontent.com --client-id-list sts.amazonaws.com; fi
 
 aws iam create-role --role-name "$ROLE_NAME" --assume-role-policy-document file://trust.json --description 'Created with RoleCraft' >/dev/null
 POLICY_ARN=$(aws iam create-policy --policy-name "${ROLE_NAME}-policy" --policy-document file://policy.json --query Policy.Arn --output text)

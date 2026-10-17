@@ -35,6 +35,12 @@ describe("exportCliBash", () => {
       "aws iam create-open-id-connect-provider --url https://token.actions.githubusercontent.com --client-id-list sts.amazonaws.com",
     );
   });
+  it("github OIDC check treats empty or None as absent", () => {
+    const c = exportCliBash(make("github-deploy")).content;
+    expect(c).toContain("existing=$(aws iam list-open-id-connect-providers --query ");
+    expect(c).toContain('if [ -z "$existing" ] || [ "$existing" = "None" ]; then aws iam create-open-id-connect-provider');
+    expect(c).not.toContain("grep -q");
+  });
   it("ec2 cases create instance profile; others do not", () => {
     for (const n of ["ec2-ssm", "eks-kubectl"]) {
       const c = exportCliBash(make(n)).content;

@@ -3,9 +3,10 @@ import { stringifyPolicy, type ExportFile } from "./json";
 import { shQuote, type ExportInput } from "./types";
 
 const EOF_MARK = "ROLECRAFT_EOF";
-const GITHUB_OIDC_CHECK =
-  `if ! aws iam list-open-id-connect-providers --query "OpenIDConnectProviderList[?ends_with(Arn, '/token.actions.githubusercontent.com')].Arn" --output text | grep -q .; then ` +
-  `aws iam create-open-id-connect-provider --url https://token.actions.githubusercontent.com --client-id-list sts.amazonaws.com; fi`;
+const GITHUB_OIDC_CHECK = [
+  'existing=$(aws iam list-open-id-connect-providers --query "OpenIDConnectProviderList[?ends_with(Arn, \'/token.actions.githubusercontent.com\')].Arn" --output text)',
+  'if [ -z "$existing" ] || [ "$existing" = "None" ]; then aws iam create-open-id-connect-provider --url https://token.actions.githubusercontent.com --client-id-list sts.amazonaws.com; fi',
+];
 
 function heredoc(file: string, body: string): string[] {
   return [`cat > ${file} <<'${EOF_MARK}'`, body.replace(/\n$/, ""), EOF_MARK];
@@ -110,7 +111,7 @@ export function exportCliBash(input: ExportInput): ExportFile {
   if (result.policy) add("# Permissions policy", ...heredoc("policy.json", stringifyPolicy(result.policy)), "");
 
   if (trust.kind === "github") {
-    add("# GitHub Actions needs an OIDC identity provider in this account (created once).", GITHUB_OIDC_CHECK, "");
+    add("# GitHub Actions needs an OIDC identity provider in this account (created once).", ...GITHUB_OIDC_CHECK, "");
   }
   add(
     "aws iam create-role --role-name \"$ROLE_NAME\" --assume-role-policy-document file://trust.json --description 'Created with RoleCraft' >/dev/null",
