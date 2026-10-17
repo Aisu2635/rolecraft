@@ -6,3 +6,5 @@ dist/
 .env*
 coverage/
 .claude/settings.local.json
+tmp/
+__pycache__/
