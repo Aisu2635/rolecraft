@@ -12,7 +12,7 @@ function heredoc(file: string, body: string): string[] {
   return [`cat > ${file} <<'${EOF_MARK}'`, body.replace(/\n$/, ""), EOF_MARK];
 }
 
-function eksClusters(grants: Grant[]): string[] {
+export function eksClusters(grants: Grant[]): string[] {
   const out: string[] = [];
   for (const g of grants) {
     if (g.module !== "eks" || g.service !== "eks" || g.access.type !== "preset") continue;
