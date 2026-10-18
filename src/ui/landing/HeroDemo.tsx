@@ -56,10 +56,6 @@ export function HeroDemo() {
             <span className="lp-dot" />
             policy.json <span className="d">— written by hand</span>
           </div>
-          <div className="lp-ph lp-ph-rc">
-            <FileText size={16} />
-            S3 folder — read only <span className="d">· RoleCraft</span>
-          </div>
         </div>
         <div className="lp-hand">
           <div className="lp-ed">
@@ -89,6 +85,10 @@ export function HeroDemo() {
           </div>
         </div>
         <div className="lp-rc">
+          <div className="lp-ph">
+            <FileText size={16} />
+            S3 folder — read only <span className="d">· RoleCraft</span>
+          </div>
           <div className="lp-lines">
             <div className="lp-line">
               <span className="lp-who lp-pop" style={pop(0)}>
