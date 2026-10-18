@@ -10,11 +10,13 @@ import { buildTrust } from "./trust/trust";
 import type { Issue, PolicyDocument, SlimService, Statement } from "./types";
 import {
   LIMITS,
+  policyLimit,
   policySize,
   validateIdentityPolicy,
   validateModelValues,
   validateTrustPolicy,
 } from "./validate/policy";
+import { managedPolicyCountIssue } from "./validate/values";
 
 export type GrantBuilder = (grant: Grant, svc: SlimService, ctx: BuildContext) => BuildResult;
 
@@ -136,6 +138,9 @@ export function generate(
     issues.push(...validateIdentityPolicy(policy, catalog));
   }
 
+  const countIssue = managedPolicyCountIssue(model, policy !== null && model.policyMode === "managed");
+  if (countIssue) issues.push(countIssue);
+
   let trust: PolicyDocument | null;
   try {
     const t = buildTrust(model.trust, ctx);
@@ -153,13 +158,16 @@ export function generate(
     policy: policy ? policySize(policy) : 0,
     trust: trust ? policySize(trust) : 0,
   };
-  const limit = model.policyMode === "managed" ? LIMITS.managed : LIMITS.inline;
+  const limit = policyLimit(model.policyMode, model.trust);
   if (sizes.policy > limit) {
-    issues.push({
-      id: "E_POLICY_TOO_LARGE",
-      severity: "error",
-      message: `The policy is ${sizes.policy} characters, over the ${limit} limit for ${model.policyMode} policies. Remove permissions or split them across roles.`,
-    });
+    const trust = model.trust;
+    const message =
+      model.policyMode === "inline" && trust.kind === "principal"
+        ? `The policy is ${sizes.policy} characters, over the ${limit} limit for inline policies on an IAM ${trust.target}. ` +
+          `Switch to managed mode (${LIMITS.managed} limit) or remove permissions. ` +
+          `Other inline policies already on the ${trust.target} count toward the same ${limit} total.`
+        : `The policy is ${sizes.policy} characters, over the ${limit} limit for ${model.policyMode} policies. Remove permissions or split them across roles.`;
+    issues.push({ id: "E_POLICY_TOO_LARGE", severity: "error", message });
   }
   if (sizes.trust > LIMITS.trust) {
     issues.push({
