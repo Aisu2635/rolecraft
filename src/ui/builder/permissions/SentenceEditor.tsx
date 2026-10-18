@@ -4,17 +4,16 @@ import ExpandableSection from "@cloudscape-design/components/expandable-section"
 import Select from "@cloudscape-design/components/select";
 import SpaceBetween from "@cloudscape-design/components/space-between";
 import StatusIndicator from "@cloudscape-design/components/status-indicator";
-import { useContext, useState, type JSX } from "react";
-import { useStore } from "zustand";
+import { useState, type JSX } from "react";
 import type { Grant } from "../../../core/model/model";
 import type { Issue, SlimService } from "../../../core/types";
 import { useBuilderStore } from "../../../state/builder";
-import { CatalogContext } from "../../../state/catalog";
 import { useDerived } from "../../../state/derive";
 import { grantIssues } from "../issues";
 import { ScopeEditor } from "../scope/ScopeEditor";
 import { SERVICE_SEARCH_ID } from "../sidebar/ServiceSidebar";
 import { useFocusTarget } from "../useFocusTarget";
+import { ServiceUnavailable, useServiceInfo } from "./ServiceStatus";
 import { scopeSummary } from "./summary";
 import { applyVerb, verbChoices } from "./verbs";
 
@@ -74,13 +73,10 @@ function GrantEditor(props: { grant: Grant; svc: SlimService; issues: Issue[]; n
 
 function GrantRow(props: { grant: Grant; issues: Issue[] }): JSX.Element {
   const { grant } = props;
-  const catalog = useContext(CatalogContext);
-  const status = useStore(catalog, (s) => s.status[grant.service]);
-  const svc = useStore(catalog, (s) => s.services[grant.service]);
-  const entry = useStore(catalog, (s) => s.index?.services.find((e) => e.key === grant.service));
+  const info = useServiceInfo(grant.service);
+  const { svc, name } = info;
   const removeGrant = useBuilderStore((s) => s.removeGrant);
   const ref = useFocusTarget<HTMLDivElement>("grant:" + grant.id);
-  const name = svc?.name ?? entry?.name ?? grant.service;
   return (
     <div ref={ref} role="group" aria-label={`${name} permission`} className="rc-grant">
       <SpaceBetween size="xs">
@@ -93,17 +89,10 @@ function GrantRow(props: { grant: Grant; issues: Issue[] }): JSX.Element {
             onClick={() => removeGrant(grant.id)}
           />
         </div>
-        {status === "ready" && svc ? (
+        {info.status === "ready" && svc ? (
           <GrantEditor grant={grant} svc={svc} issues={props.issues} name={name} />
-        ) : status === "error" ? (
-          <div style={rowStyle}>
-            <StatusIndicator type="error">Couldn&apos;t load this service.</StatusIndicator>
-            <Button onClick={() => void catalog.getState().retry(grant.service)}>Retry</Button>
-          </div>
-        ) : status === "missing" ? (
-          <StatusIndicator type="warning">Service no longer in AWS data. It is left out of the policy.</StatusIndicator>
         ) : (
-          <StatusIndicator type="loading">{`Loading ${name}…`}</StatusIndicator>
+          <ServiceUnavailable info={info} />
         )}
       </SpaceBetween>
     </div>

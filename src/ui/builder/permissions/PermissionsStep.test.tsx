@@ -9,14 +9,14 @@ beforeEach(() => useBuilderStore.getState().reset());
 afterEach(cleanup);
 
 describe("PermissionsStep", () => {
-  it("offers the Sentences editor, with Grid not available yet", async () => {
+  it("offers the Sentences editor and the Grid", async () => {
     const cat = await readyCatalog("s3");
     render(withCatalog(cat, <PermissionsStep />));
     const [sentences, grid] = createWrapper(document.body).findSegmentedControl()!.findSegments();
     expect(sentences!.getElement()).toHaveTextContent("Sentences");
     expect(sentences!.getElement()).toHaveAttribute("aria-pressed", "true");
     expect(grid!.getElement()).toHaveTextContent("Grid");
-    expect(grid!.getElement()).toBeDisabled();
+    expect(grid!.getElement()).not.toBeDisabled();
   });
 
   it("guides the user to add a first permission", async () => {
