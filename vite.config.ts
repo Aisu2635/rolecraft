@@ -22,7 +22,8 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       include: ["src/core/**"],
-      exclude: ["src/core/catalog/loader.ts", "src/core/__fixtures__/**"],
+      // Snapshot files (.sh/.ps1/.tf/.yaml/.md) aren't source: v8 would report "Failed to parse" for each.
+      exclude: ["src/core/catalog/loader.ts", "src/core/__fixtures__/**", "src/core/**/__snapshots__/**"],
       thresholds: { lines: 95, branches: 95 },
     },
   },
