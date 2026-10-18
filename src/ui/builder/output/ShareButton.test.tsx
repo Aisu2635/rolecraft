@@ -33,6 +33,13 @@ describe("ShareButton", () => {
     expect(screen.getByRole("button", { name: "Share" })).toBeDisabled();
     expect(screen.getByText("This role is too large to share as a link. Export it instead.")).toBeInTheDocument();
   });
+  it("describes the disabled button with the too-large note", () => {
+    act(() => store().setShareStatus("too-large"));
+    render(<ShareButton />);
+    expect(screen.getByRole("button", { name: "Share" })).toHaveAccessibleDescription(
+      "This role is too large to share as a link. Export it instead.",
+    );
+  });
   it("does not copy and flags too-large when the role no longer fits", async () => {
     render(<ShareButton />);
     const big = Array.from({ length: 1500 }, (_, i) => `arn:aws:iam::aws:policy/p${i}-${(i * 7919).toString(36)}`);

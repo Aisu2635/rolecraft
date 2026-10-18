@@ -17,7 +17,7 @@ export function ShareButton(): JSX.Element {
   };
   return (
     <>
-      <Button iconName="share" disabled={tooLarge} onClick={share}>
+      <Button iconName="share" disabled={tooLarge} ariaDescribedby={tooLarge ? "rc-share-note" : undefined} onClick={share}>
         Share
       </Button>
       {tooLarge && (
