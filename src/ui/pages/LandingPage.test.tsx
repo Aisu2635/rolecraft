@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { LandingPage } from "./LandingPage";
@@ -48,5 +48,60 @@ describe("LandingPage", () => {
     renderLanding();
     await waitFor(() => expect(f).toHaveBeenCalled());
     expect(screen.getByText("450+ services")).toBeInTheDocument();
+  });
+});
+
+describe("LandingPage hero and motion", () => {
+  it("replaces the static preview with the animated hero demo", () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
+    const { container } = renderLanding();
+    expect(screen.getByLabelText("Example policy preview")).toBeInTheDocument();
+    expect(container.querySelector(".lp-stage")).not.toBeNull();
+    expect(container.querySelector(".lp-preview > pre")).toBeNull();
+  });
+
+  it("reveals feature cards immediately when IntersectionObserver is missing", () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
+    const { container } = renderLanding();
+    const cards = container.querySelectorAll(".lp-feat");
+    expect(cards.length).toBe(3);
+    cards.forEach((c) => expect(c).toHaveClass("lp-feat-in"));
+  });
+
+  it("reveals each feature card once when it scrolls into view, then stops observing it", () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
+    const observed: Element[] = [];
+    let callback: IntersectionObserverCallback = () => undefined;
+    const unobserve = vi.fn();
+    const disconnect = vi.fn();
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        constructor(cb: IntersectionObserverCallback) {
+          callback = cb;
+        }
+        observe(el: Element) {
+          observed.push(el);
+        }
+        unobserve = unobserve;
+        disconnect = disconnect;
+      },
+    );
+    const { container, unmount } = renderLanding();
+    const cards = Array.from(container.querySelectorAll(".lp-feat"));
+    expect(cards.every((c) => !c.classList.contains("lp-feat-in"))).toBe(true);
+    expect(observed).toEqual(cards);
+    act(() => {
+      callback([{ isIntersecting: false, target: cards[0] } as unknown as IntersectionObserverEntry], {} as never);
+    });
+    expect(cards[0]).not.toHaveClass("lp-feat-in");
+    act(() => {
+      callback([{ isIntersecting: true, target: cards[1] } as unknown as IntersectionObserverEntry], {} as never);
+    });
+    expect(cards[1]).toHaveClass("lp-feat-in");
+    expect(cards[0]).not.toHaveClass("lp-feat-in");
+    expect(unobserve).toHaveBeenCalledWith(cards[1]);
+    unmount();
+    expect(disconnect.mock.calls.length).toBeGreaterThan(0);
   });
 });
