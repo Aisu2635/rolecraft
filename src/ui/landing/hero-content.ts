@@ -40,7 +40,7 @@ export const HERO_POLICY_JSON = `{
 }
 `;
 
-const MAX_INLINE = 56;
+const MAX_INLINE = 36;
 
 function inline(v: unknown): string {
   if (Array.isArray(v)) return `[${v.map(inline).join(", ")}]`;

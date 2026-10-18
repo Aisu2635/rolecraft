@@ -46,6 +46,12 @@ describe("hero content", () => {
       return rest;
     });
     expect(shown).toEqual(expected);
-    expect(lines.length).toBeLessThanOrEqual(10);
+    expect(lines.length).toBeLessThanOrEqual(11);
+  });
+
+  it("keeps every display line short enough to fit the card at small widths", () => {
+    const lines = heroPolicyLines();
+    expect(lines).toHaveLength(11);
+    expect(Math.max(...lines.map((l) => l.length))).toBeLessThanOrEqual(52);
   });
 });

@@ -64,17 +64,16 @@ a { color: var(--rc-link); }
 .lp-hero { position: relative; overflow: hidden; }
 .lp-hero::before { content: ""; position: absolute; inset: -30%; pointer-events: none; will-change: transform; background: radial-gradient(38% 40% at 24% 34%, rgba(255, 153, 0, 0.16), transparent 70%), radial-gradient(36% 42% at 80% 62%, rgba(9, 114, 211, 0.24), transparent 70%); animation: lp-drift 20s ease-in-out infinite alternate; }
 .lp-hero-in { position: relative; }
-.lp-hero-in > div:first-child > * { animation: lp-up 0.65s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
-.lp-hero-in > div:first-child > :nth-child(2) { animation-delay: 80ms; }
-.lp-hero-in > div:first-child > :nth-child(3) { animation-delay: 160ms; }
-.lp-hero-in > div:first-child > :nth-child(4) { animation-delay: 240ms; }
-.lp-hero-in > div:first-child > :nth-child(5) { animation-delay: 320ms; }
-.lp-preview { animation: lp-up 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) 200ms both; }
+/* h1 and sub copy stay visible from first paint (LCP); only the kicker, CTAs and facts enter */
+.lp-hero-in > div:first-child > .lp-kick, .lp-hero-in > div:first-child > .lp-ctas, .lp-hero-in > div:first-child > .lp-facts { animation: lp-up 0.65s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+.lp-hero-in > div:first-child > .lp-ctas { animation-delay: 120ms; }
+.lp-hero-in > div:first-child > .lp-facts { animation-delay: 200ms; }
+.lp-preview { container-type: inline-size; animation: lp-up 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) 200ms both; }
 .lp-btn.primary { position: relative; overflow: hidden; isolation: isolate; }
 .lp-btn.primary::after { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 60%; z-index: -1; pointer-events: none; background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.55), transparent); transform: translateX(-130%) skewX(-18deg); }
 .lp-btn.primary:hover::after, .lp-btn.primary:focus-visible::after { animation: lp-shimmer 0.9s ease-out; }
 .lp-sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
-.lp-stage { position: relative; height: 364px; }
+.lp-stage { position: relative; height: 404px; }
 .lp-stage > .lp-ph { height: 45px; box-sizing: border-box; flex-wrap: nowrap; white-space: nowrap; }
 .lp-hand, .lp-rc { position: absolute; inset: 45px 0 0 0; display: flex; flex-direction: column; }
 .lp-hand { padding: 0 16px; justify-content: center; gap: 10px; transition: opacity 0.4s ease, transform 0.4s ease; }
@@ -86,8 +85,8 @@ a { color: var(--rc-link); }
 .lp-code { margin: 0; color: #f3d6d2; font-family: var(--rc-mono, ui-monospace, monospace); font-size: 13px; line-height: 21px; min-height: 105px; white-space: pre; transition: opacity 0.3s ease; }
 .lp-caret { display: inline-block; width: 7px; height: 15px; margin-left: 1px; vertical-align: -3px; background: #ff9900; animation: lp-blink 1s steps(2, jump-none) infinite; }
 .lp-strike { position: absolute; left: 10px; right: 10px; top: 50%; height: 3px; margin-top: -1px; border-radius: 2px; background: #ff9900; box-shadow: 0 0 10px rgba(255, 153, 0, 0.7); transform: scaleX(0); transform-origin: left; }
-.lp-out { display: flex; flex-direction: column; flex: 1; min-height: 0; gap: 8px; padding: 8px 16px 16px; }
-.lp-out .lp-pre { flex: 1; line-height: 17px; padding: 10px 16px; border-radius: 8px; overflow: hidden; scrollbar-width: none; }
+.lp-out { display: flex; flex-direction: column; flex: 1; min-height: 0; gap: 8px; padding: 8px 12px 14px; }
+.lp-out .lp-pre { flex: 1; line-height: 17px; padding: 10px 12px; border-radius: 8px; overflow: hidden; white-space: pre-wrap; overflow-wrap: anywhere; font-size: clamp(7.5px, calc((100cqw - 48px) / 33), 12px); }
 .lp-l { display: block; }
 .lp-stage[data-phase="typing"] .lp-caret { display: inline-block; }
 .lp-stage:not([data-phase="typing"]) .lp-caret { display: none; }
@@ -107,7 +106,7 @@ a { color: var(--rc-link); }
 @keyframes lp-shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-3px); } 75% { transform: translateX(3px); } }
 @keyframes lp-blink { from { opacity: 1; } to { opacity: 0; } }
 @keyframes lp-shimmer { to { transform: translateX(260%) skewX(-18deg); } }
-@media (max-width: 480px) { .lp-stage { height: 410px; } .lp-code { font-size: 12px; } .lp-out .lp-pre { font-size: 10.5px; } }
+@media (max-width: 480px) { .lp-stage { height: 440px; } .lp-code { font-size: 12px; } }
 @media (prefers-reduced-motion: reduce) {
   .lp-hero::before, .lp-hero-in > div:first-child > *, .lp-preview, .lp-feat-in, .lp-stage *, .lp-btn.primary::after { animation: none !important; transition: none !important; }
   .lp-feat { opacity: 1; }

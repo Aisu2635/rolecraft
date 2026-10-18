@@ -81,7 +81,7 @@ export function HeroDemo() {
               </span>
             </div>
           </div>
-          <div className="lp-out lp-pop lp-rise" style={pop(5)}>
+          <div className="lp-out lp-pop" style={pop(5)}>
             <span className="lp-tag good">Least privilege</span>
             <pre className="lp-pre">
               {POLICY_LINES.map((l, i) => (
