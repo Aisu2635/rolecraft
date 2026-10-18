@@ -6,12 +6,7 @@ import { deriveOutput } from "../../state/derive";
 import { OutputPanel } from "../builder/output/OutputPanel";
 import { grantFor, readyCatalog, withCatalog } from "../builder/permissions/test-catalog";
 import { useFormatTabs } from "./FormatTabs";
-
-const flags = vi.hoisted(() => ({ fail: false }));
-vi.mock("./exporters", async (orig) => {
-  if (flags.fail) throw new Error("chunk failed");
-  return orig();
-});
+import { resetExportersForTests } from "./lazy";
 
 const store = () => useBuilderStore.getState();
 const writeText = vi.fn(() => Promise.resolve());
@@ -19,7 +14,7 @@ type Cat = Awaited<ReturnType<typeof readyCatalog>>;
 
 beforeEach(() => {
   store().reset();
-  flags.fail = false;
+  resetExportersForTests();
   writeText.mockClear();
   Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
 });
@@ -55,7 +50,7 @@ const activePre = (name = "CLI") => panelOf(name).querySelector("pre") as HTMLEl
 describe("FormatTabs", () => {
   it("shows the load failure, and Retry loads the exporters", async () => {
     const cat = await s3Group();
-    flags.fail = true;
+    resetExportersForTests(() => Promise.reject(new Error("chunk failed")));
     panel(cat);
     fireEvent.click(screen.getByRole("tab", { name: "CLI" }));
     expect(screen.getByText("Loading exporters…")).toBeInTheDocument();
@@ -63,7 +58,7 @@ describe("FormatTabs", () => {
       await screen.findByText("Couldn't load the exporters. Check your connection and try again."),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Copy" })).toBeDisabled();
-    flags.fail = false;
+    resetExportersForTests();
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(activePre()).toBeTruthy());
   });

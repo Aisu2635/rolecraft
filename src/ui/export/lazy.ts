@@ -2,10 +2,12 @@ import { useCallback, useEffect, useState } from "react";
 
 export type Exporters = typeof import("./exporters");
 
+const realImporter = (): Promise<Exporters> => import("./exporters");
+let defaultImporter = realImporter;
 let memo: Promise<Exporters> | undefined;
 
 /** Loads the exporters chunk once; a failed load isn't remembered, so the next call tries again. */
-export function loadExporters(importer: () => Promise<Exporters> = () => import("./exporters")): Promise<Exporters> {
+export function loadExporters(importer: () => Promise<Exporters> = defaultImporter): Promise<Exporters> {
   if (!memo) {
     const attempt = importer();
     memo = attempt;
@@ -14,6 +16,12 @@ export function loadExporters(importer: () => Promise<Exporters> = () => import(
     });
   }
   return memo;
+}
+
+/** Tests only: forget the loaded module and use `importer` (default: the real chunk) for later loads. */
+export function resetExportersForTests(importer: () => Promise<Exporters> = realImporter): void {
+  memo = undefined;
+  defaultImporter = importer;
 }
 
 export interface ExportersState {

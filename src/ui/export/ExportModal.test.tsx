@@ -79,9 +79,9 @@ describe("ExportModal", () => {
     onDismiss.mockImplementation(() => order.push("close"));
     const unsub = useBuilderStore.subscribe(() => order.push("nav"));
     fireEvent.click(screen.getAllByRole("button", { name: /^Jump to/ })[0]!);
+    expect(order).toEqual(["close"]);
+    await waitFor(() => expect(order).toContain("nav"));
     unsub();
-    expect(order[0]).toBe("close");
-    expect(order).toContain("nav");
   });
 
   it("is not rendered until visible", () => {

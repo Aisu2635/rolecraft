@@ -184,6 +184,21 @@ describe("OutputPanel copy and tab fallbacks", () => {
     rerender(withCatalog(cat, <OutputPanel extraTabs={[]} />));
     expect(screen.getByRole("tab", { name: "Policy" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByLabelText("Policy JSON")).toBeInTheDocument();
+    rerender(withCatalog(cat, <OutputPanel extraTabs={tabs} />));
+    expect(screen.getByRole("tab", { name: "Policy" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("keeps Copy enabled and shows the error banner when there are errors AND policy text (spec 6.5)", async () => {
+    const cat = await s3GroupModel();
+    act(() => store().setTrust({ kind: "github", owner: "", repo: "r", ref: { type: "branch", value: "main" } }));
+    const r = ready(cat);
+    expect(r.issues.some((i) => i.severity === "error")).toBe(true);
+    expect(r.policy).not.toBeNull();
+    render(withCatalog(cat, <OutputPanel />));
+    expect(screen.getByText("This policy has errors. Fix them before you apply it.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copy" })).not.toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Copy" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(stringifyPolicy(r.policy!)));
   });
 
   it("renders actions given as a function of the derived input", async () => {

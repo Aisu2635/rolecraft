@@ -16,6 +16,8 @@ function jump(issue: Issue): void {
   s.focus(to.target);
 }
 
+const JUMP_AFTER_CLOSE_MS = 50;
+
 /** `onJump` runs first, e.g. to close a modal that covers the builder. */
 export function IssuesList(props: { issues: Issue[]; severities?: Severity[]; onJump?: () => void }): JSX.Element {
   const shown = props.severities ? props.issues.filter((i) => props.severities!.includes(i.severity)) : props.issues;
@@ -30,8 +32,10 @@ export function IssuesList(props: { issues: Issue[]; severities?: Severity[]; on
               variant="inline-link"
               ariaLabel={`Jump to: ${issue.message}`}
               onClick={() => {
-                props.onJump?.();
-                jump(issue);
+                if (!props.onJump) return jump(issue);
+                // A closing modal restores focus to its opener after this commit; jump once that has happened.
+                props.onJump();
+                setTimeout(() => jump(issue), JUMP_AFTER_CLOSE_MS);
               }}
             >
               Jump to

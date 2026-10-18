@@ -62,6 +62,8 @@ export function OutputPanel(props: OutputPanelProps = {}): JSX.Element {
   const extra = [...(props.extraTabs ?? []), ...hookTabs];
   // A tab that is no longer offered (e.g. a format tab removed) falls back to Policy.
   const current = ["policy", "trust", ...extra.map((t) => t.id)].includes(active) ? active : "policy";
+  // Remember the fallback, so the panel does not jump back if the tab reappears.
+  if (current !== active) setActive(current);
   const copyText =
     current === "policy" ? policyText : current === "trust" ? trustText : (extra.find((t) => t.id === current)?.copyText ?? "");
   const hasErrors = result.issues.some((i) => i.severity === "error");

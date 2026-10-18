@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Issue } from "../../../core/types";
 import { useBuilderStore } from "../../../state/builder";
@@ -43,7 +43,7 @@ describe("IssuesList", () => {
 });
 
 describe("IssuesList onJump", () => {
-  it("calls onJump before navigating", () => {
+  it("calls onJump first and navigates after it", async () => {
     const order: string[] = [];
     const unsub = useBuilderStore.subscribe(() => order.push("store"));
     render(
@@ -53,8 +53,9 @@ describe("IssuesList onJump", () => {
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: "Jump to: bad" }));
+    expect(order).toEqual(["jump"]);
+    await waitFor(() => expect(useBuilderStore.getState().step).toBe(1));
     unsub();
     expect(order[0]).toBe("jump");
-    expect(useBuilderStore.getState().step).toBe(1);
   });
 });
