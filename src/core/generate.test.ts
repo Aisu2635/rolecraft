@@ -120,6 +120,71 @@ describe("generate", () => {
     }
   });
 
+  describe("inline size limit by target", () => {
+    // A builder whose single statement has a Sid of tunable length, so the policy hits an exact size.
+    const sized = (target: number, over: Partial<RoleModel>) => {
+      const mk = (n: number): GrantBuilder => () => ({
+        statements: [{ Sid: "S" + "x".repeat(n), Effect: "Allow", Action: "textract:AnalyzeDocument", Resource: "*" }],
+        issues: [],
+      });
+      const g = [grant({ service: "textract", module: "x" })];
+      const base = generate(model(g, over), catalog, { x: mk(0) }).sizes.policy;
+      return generate(model(g, over), catalog, { x: mk(target - base) });
+    };
+    const tooLarge = (r: ReturnType<typeof generate>) => r.issues.find((i) => i.id === "E_POLICY_TOO_LARGE");
+    const user = { kind: "principal", target: "user", name: "bob" } as const;
+    const group = { kind: "principal", target: "group", name: "devs" } as const;
+    for (const [label, trust, limit] of [
+      ["principal user", user, 2048],
+      ["principal group", group, 5120],
+    ] as const) {
+      it(`${label} inline: ${limit} ok, ${limit + 1} error suggesting managed mode`, () => {
+        const ok = sized(limit, { policyMode: "inline", trust });
+        expect(ok.sizes.policy).toBe(limit);
+        expect(tooLarge(ok)).toBeUndefined();
+        const over = sized(limit + 1, { policyMode: "inline", trust });
+        expect(over.sizes.policy).toBe(limit + 1);
+        const issue = tooLarge(over);
+        expect(issue?.severity).toBe("error");
+        expect(issue?.message).toContain(`${limit}`);
+        expect(issue?.message).toContain("managed");
+        expect(issue?.message).toContain(`Other inline policies already on the ${trust.target}`);
+      });
+      it(`${label} managed mode keeps the 6144 limit`, () => {
+        expect(tooLarge(sized(6144, { policyMode: "managed", trust }))).toBeUndefined();
+        expect(tooLarge(sized(6145, { policyMode: "managed", trust }))).toBeDefined();
+      });
+    }
+    it("role inline: 10240 ok, 10241 error", () => {
+      expect(tooLarge(sized(10240, { policyMode: "inline" }))).toBeUndefined();
+      expect(tooLarge(sized(10241, { policyMode: "inline" }))?.message).toContain("10240");
+    });
+  });
+
+  describe("managed policy attachment quota (10)", () => {
+    const arns = (n: number) => Array.from({ length: n }, (_, i) => `arn:aws:iam::aws:policy/P${i}`);
+    const count = (n: number, over: Partial<RoleModel>, grants = [grant({ service: "textract" })]) =>
+      generate(model(grants, { managedPolicyArns: arns(n), ...over }), catalog).issues.filter(
+        (i) => i.id === "V_TOO_MANY_MANAGED_POLICIES",
+      );
+    it("9 ARNs + generated managed policy = 10 is ok", () => expect(count(9, { policyMode: "managed" })).toEqual([]));
+    it("10 ARNs + generated managed policy is an error", () => {
+      const issues = count(10, { policyMode: "managed" });
+      expect(issues).toHaveLength(1);
+      expect(issues[0]?.severity).toBe("error");
+    });
+    it("10 ARNs in inline mode is ok", () => expect(count(10, { policyMode: "inline" })).toEqual([]));
+    it("10 ARNs without permissions is ok, 11 is an error", () => {
+      expect(count(10, { policyMode: "managed" }, [])).toEqual([]);
+      expect(count(11, { policyMode: "managed" }, [])).toHaveLength(1);
+    });
+    it("applies to principal users too", () => {
+      const trust = { kind: "principal", target: "user", name: "bob" } as const;
+      expect(count(10, { policyMode: "managed", trust })).toHaveLength(1);
+      expect(count(9, { policyMode: "managed", trust })).toEqual([]);
+    });
+  });
+
   it("ec2 all levels is too large in both modes", () => {
     const g = grant({
       service: "ec2",

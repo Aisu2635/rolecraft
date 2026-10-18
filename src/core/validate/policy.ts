@@ -11,7 +11,7 @@ import {
 } from "./conditions";
 import { parseDocument, toList } from "./schema";
 
-export { LIMITS, policySize } from "./size";
+export { LIMITS, policyLimit, policySize } from "./size";
 export { isKnownConditionOperator, GLOBAL_CONDITION_KEYS } from "./conditions";
 export { validateModelValues } from "./values";
 

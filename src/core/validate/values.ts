@@ -8,7 +8,8 @@ const GITHUB_REPO = /^[A-Za-z0-9._-]{1,100}$/;
 const REGION = /^[a-z]{2}(-gov)?-[a-z]+-\d$/;
 const EXTERNAL_ID = /^[\w+=,.@:/-]{2,1224}$/;
 const MANAGED_POLICY_ARN = /^arn:aws:iam::(aws|\d{12}):policy\/[\w+=,.@/-]{1,512}$/;
-const MAX_MANAGED_POLICIES = 20;
+/** AWS default quota for managed policies attached to a role, user or group (adjustable up to 20). */
+export const MAX_MANAGED_POLICIES = 10;
 const NON_AWS_REGION = /-gov-|^cn-|^us-iso/;
 const PRINCIPAL_NAME = /^[\w+=,.@-]{1,128}$/;
 
@@ -47,10 +48,10 @@ export function validateModelValues(model: RoleModel): Issue[] {
   if (Array.isArray(model.managedPolicyArns)) {
     model.managedPolicyArns.forEach((arn, i) => {
       check(out, arn, MANAGED_POLICY_ARN, "V_MANAGED_POLICY_ARN", `managedPolicyArns[${i}]`, "Managed policy ARN must look like arn:aws:iam::aws:policy/Name.");
+      if (model.managedPolicyArns.indexOf(arn) < i) {
+        out.push(issue("V_DUPLICATE_MANAGED_POLICY_ARN", `managedPolicyArns[${i}]`, "This managed policy is already in the list. Remove the duplicate."));
+      }
     });
-    if (model.managedPolicyArns.length > MAX_MANAGED_POLICIES) {
-      out.push(issue("V_TOO_MANY_MANAGED_POLICIES", "managedPolicyArns", `A role can have at most ${MAX_MANAGED_POLICIES} managed policies attached.`));
-    }
   }
   const trust = model.trust;
   if (typeof trust !== "object" || trust === null) return out;
@@ -72,4 +73,23 @@ export function validateModelValues(model: RoleModel): Issue[] {
       break;
   }
   return out;
+}
+
+/**
+ * The attached managed policy quota: the existing ARNs plus the managed policy RoleCraft generates (when the
+ * model is in managed mode and has permissions). Checked by generate(), which knows whether a policy exists.
+ */
+export function managedPolicyCountIssue(model: RoleModel, generatedManagedPolicy: boolean): Issue | null {
+  const arns = Array.isArray(model.managedPolicyArns) ? model.managedPolicyArns.length : 0;
+  const total = arns + (generatedManagedPolicy ? 1 : 0);
+  if (total <= MAX_MANAGED_POLICIES) return null;
+  const who = model.trust?.kind === "principal" ? `an IAM ${model.trust.target}` : "a role";
+  const counted = generatedManagedPolicy
+    ? `${total} managed policies would be attached (${arns} ARNs, and the policy RoleCraft generates counts too)`
+    : `${total} managed policies would be attached`;
+  return issue(
+    "V_TOO_MANY_MANAGED_POLICIES",
+    "managedPolicyArns",
+    `${counted}; AWS allows ${MAX_MANAGED_POLICIES} per ${who.replace(/^an? /, "")} by default. Remove some${generatedManagedPolicy ? " or switch to inline mode" : ""}, or request a quota increase (up to 20) in Service Quotas before applying.`,
+  );
 }

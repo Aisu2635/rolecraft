@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createEmptyModel, type RoleModel, type Trust } from "../model/model";
-import { validateModelValues } from "./values";
+import { managedPolicyCountIssue, validateModelValues } from "./values";
 
 const ids = (m: RoleModel) => validateModelValues(m).map((i) => i.id);
 const withTrust = (trust: Trust): RoleModel => ({ ...createEmptyModel(), trust });
@@ -70,8 +70,33 @@ describe("validateModelValues", () => {
     expect(ids(m(["arn:aws:iam::aws:role/x"]))).toEqual(["V_MANAGED_POLICY_ARN"]);
     expect(ids(m(["arn:aws:iam::12345:policy/x"]))).toEqual(["V_MANAGED_POLICY_ARN"]);
     expect(ids(m(["ReadOnlyAccess"]))).toEqual(["V_MANAGED_POLICY_ARN"]);
-    const ok = "arn:aws:iam::aws:policy/P";
-    expect(ids(m(Array(20).fill(ok)))).toEqual([]);
-    expect(ids(m(Array(21).fill(ok)))).toEqual(["V_TOO_MANY_MANAGED_POLICIES"]);
+  });
+  it("duplicate managed policy ARNs", () => {
+    const m = (managedPolicyArns: string[]) => ({ ...createEmptyModel(), managedPolicyArns });
+    const a = "arn:aws:iam::aws:policy/A";
+    const b = "arn:aws:iam::aws:policy/B";
+    expect(ids(m([a, b]))).toEqual([]);
+    const issues = validateModelValues(m([a, b, a, a]));
+    expect(issues.map((i) => i.id)).toEqual(["V_DUPLICATE_MANAGED_POLICY_ARN", "V_DUPLICATE_MANAGED_POLICY_ARN"]);
+    expect(issues.map((i) => i.path)).toEqual(["managedPolicyArns[2]", "managedPolicyArns[3]"]);
+    expect(issues[0]?.severity).toBe("error");
+  });
+  it("managed policy count: ARNs plus the generated managed policy, at most 10", () => {
+    const arns = (n: number) => Array.from({ length: n }, (_, i) => `arn:aws:iam::aws:policy/P${i}`);
+    const m = (n: number) => ({ ...createEmptyModel(), managedPolicyArns: arns(n) });
+    // validateModelValues doesn't know whether a policy is generated; generate() adds this check.
+    expect(ids(m(25))).toEqual([]);
+    expect(managedPolicyCountIssue(m(9), true)).toBeNull();
+    expect(managedPolicyCountIssue(m(10), false)).toBeNull();
+    const over = managedPolicyCountIssue(m(10), true);
+    expect(over?.id).toBe("V_TOO_MANY_MANAGED_POLICIES");
+    expect(over?.severity).toBe("error");
+    expect(over?.path).toBe("managedPolicyArns");
+    expect(over?.message).toContain("11");
+    expect(over?.message).toContain("the policy RoleCraft generates counts");
+    expect(over?.message).toContain("20");
+    const overNoGen = managedPolicyCountIssue(m(11), false);
+    expect(overNoGen?.id).toBe("V_TOO_MANY_MANAGED_POLICIES");
+    expect(overNoGen?.message).not.toContain("generates");
   });
 });
