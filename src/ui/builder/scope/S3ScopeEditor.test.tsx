@@ -1,7 +1,10 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Scope } from "../../../core/model/model";
-import type { Issue } from "../../../core/types";
+import { s3Module } from "../../../core/engine/modules/s3";
+import { runModule } from "../../../core/engine/modules/types";
+import type { Grant } from "../../../core/model/model";
+import type { Issue, SlimService } from "../../../core/types";
 import { createEmptyModel } from "../../../core/model/model";
 import { useBuilderStore } from "../../../state/builder";
 import { S3ScopeEditor } from "./S3ScopeEditor";
@@ -83,6 +86,23 @@ describe("S3ScopeEditor", () => {
     render(<S3ScopeEditor data={{ bucket: "Bad", prefixes: ["x"] }} issues={issues} onChange={() => {}} />);
     expect(screen.queryByText("bad bucket")).toBeNull();
     expect(screen.queryByText("bad prefix")).toBeNull();
+  });
+
+  it("shows the empty-folder error on the blank second row after reveal", () => {
+    const data = { bucket: "data-lake", prefixes: ["reports/", ""] };
+    const grant: Grant = {
+      id: "g1",
+      service: "s3",
+      module: "s3",
+      scope: { type: "module", data },
+      access: { type: "preset", preset: "list-read" },
+    };
+    const { issues } = runModule(s3Module, grant, { key: "s3" } as unknown as SlimService, { partition: "aws" });
+    act(() => useBuilderStore.getState().replaceModel(createEmptyModel()));
+    render(<S3ScopeEditor data={data} issues={issues} onChange={() => {}} />);
+    expect(screen.getByLabelText("Prefix 2")).toHaveAccessibleDescription(/Folder 2 is empty\. Fill it in or remove it\./);
+    expect(screen.getByLabelText("Prefix 1")).not.toHaveAccessibleDescription(/is empty/);
+    act(() => useBuilderStore.getState().reset());
   });
 
   it("tolerates data that is not shaped like S3 data", () => {

@@ -110,6 +110,15 @@ function parents(prefix: string): string[] {
   return out;
 }
 
+/**
+ * A blank prefix means the whole bucket only when it is the only one. Next to other prefixes it is an
+ * unfilled row, so it is reported instead of silently widening the grant to the whole bucket.
+ */
+function blankRows(prefixes: string[]): number[] {
+  if (prefixes.length < 2) return [];
+  return prefixes.flatMap((p, i) => (p === "" ? [i] : []));
+}
+
 const presetActions = (preset: string): string[] =>
   PRESETS.find((p) => p.id === preset)?.actions ?? [];
 
@@ -124,6 +133,19 @@ function build(
   const actions = presetActions(preset);
   const sid = `S3${pascal(preset)}`;
   const bucketArn = `arn:aws:s3:::${data.bucket}`;
+  const blanks = blankRows(data.prefixes);
+  if (blanks.length > 0) {
+    return {
+      statements: [],
+      issues: blanks.map((i) => ({
+        id: "E_S3_PREFIX_EMPTY",
+        severity: "error",
+        grantId: grant.id,
+        path: `data.prefixes[${i}]`,
+        message: `Folder ${i + 1} is empty. Fill it in or remove it.`,
+      })),
+    };
+  }
   const issues: Issue[] = [];
   let prefixes = normalize(data.prefixes);
   const whole = prefixes.includes("");
@@ -209,7 +231,8 @@ function build(
 function explain(grant: Grant, data: S3Data): string {
   const preset = grant.access.type === "preset" ? grant.access.preset : "";
   const actions = presetActions(preset);
-  const prefixes = normalize(data.prefixes);
+  const blanks = blankRows(data.prefixes);
+  const prefixes = normalize(data.prefixes.filter((_, i) => !blanks.includes(i)));
   const list = actions.includes("ListBucket");
   const read = actions.some((a) => READ.includes(a));
   const write = actions.some((a) => WRITE.includes(a));

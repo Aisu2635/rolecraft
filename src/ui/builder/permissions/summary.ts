@@ -11,9 +11,11 @@ function s3Summary(data: Record<string, unknown>): string {
   const bucket = text(data.bucket);
   if (bucket === "") return NOT_SET;
   const prefixes = Array.isArray(data.prefixes) ? data.prefixes.map(text) : [];
-  const first = prefixes[0] ?? "";
-  if (prefixes.length === 0 || (prefixes.length === 1 && first === "")) return `${bucket} / whole bucket`;
-  return prefixes.length === 1 ? `${bucket} / ${first}` : `${bucket} / ${plural(prefixes.length, "folder", "folders")}`;
+  // A lone empty prefix is the whole bucket; next to other rows it is an unfilled row and never a folder.
+  if (prefixes.length <= 1 && (prefixes[0] ?? "") === "") return `${bucket} / whole bucket`;
+  const folders = prefixes.filter((p) => p !== "");
+  if (folders.length === 0) return NOT_SET;
+  return folders.length === 1 ? `${bucket} / ${folders[0]}` : `${bucket} / ${plural(folders.length, "folder", "folders")}`;
 }
 
 function ec2Summary(data: Record<string, unknown>): string {
