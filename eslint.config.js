@@ -33,7 +33,7 @@ const exportersModulePattern = {
 };
 
 export default tseslint.config(
-  { ignores: ["dist", "coverage", "docs", ".superpowers"] },
+  { ignores: ["dist", "coverage", "docs", ".superpowers", "test-results", "playwright-report"] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
