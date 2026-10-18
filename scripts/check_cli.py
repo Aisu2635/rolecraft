@@ -86,6 +86,8 @@ CFN_DEPLOY_FLAGS: dict[str, str] = {
 }
 CFN_DEPLOY_REQUIRED = ("--template-file", "--stack-name")
 CFN_CAPABILITIES = {"CAPABILITY_IAM", "CAPABILITY_NAMED_IAM", "CAPABILITY_AUTO_EXPAND"}
+# `aws configure get <name>` (CLI customization, used for the region preflight): the names it may read.
+CONFIGURE_GET_NAMES = {"region", "output"}
 
 # Anything that looks like `aws <service> <operation>` (also aws.exe, 'aws', "aws"): every match must yield a
 # checked command. So echo / Write-Output text containing `aws <word> <word>` is reported too (fails safe).
@@ -737,8 +739,12 @@ class BadValue(Exception):
     pass
 
 
+# `--flag=value` whose value is dynamic: the flag part is literal, so the word is still a flag.
+FLAG_EQ = re.compile(r"^--[a-z0-9][a-z0-9-]*=")
+
+
 def is_flag(w: Word) -> bool:
-    return not w.opaque and w.value.startswith("--")
+    return w.value.startswith("--") and (not w.opaque or FLAG_EQ.match(w.value) is not None)
 
 
 def split_top(s: str, sep: str = ",") -> list[str]:
@@ -920,7 +926,7 @@ def split_args(words: list[Word]) -> tuple[list[tuple[str, list[Word]]], list[Wo
         if is_flag(w):
             if "=" in w.value:
                 flag, val = w.value.split("=", 1)
-                args.append((flag, [Word(val, val, False)]))
+                args.append((flag, [Word(val, val, w.opaque)]))
             else:
                 args.append((w.value, []))
         elif args:
@@ -971,6 +977,8 @@ def check_cfn_deploy(args: list[tuple[str, list[Word]]], base_dir: str | None) -
 
 def check_command(cmd: Command, model: Model, base_dir: str | None = None) -> list[str]:
     words = cmd.words[1:]  # drop `aws`
+    if [w.value for w in words] == ["--version"]:
+        return []  # `aws --version` (README: how to check the installed CLI version)
     # Leading globals (aws --region x iam ...) are allowed before the service.
     lead: list[tuple[str, list[Word]]] = []
     while words and is_flag(words[0]):
@@ -992,6 +1000,26 @@ def check_command(cmd: Command, model: Model, base_dir: str | None = None) -> li
     problems: list[str] = [p for f, v in lead for p in check_global_arity(f, v) + check_globals(f, v)]
     lead_flags = [f for f, _ in lead]
     problems += [f"{f} given twice" for i, f in enumerate(lead_flags) if f in lead_flags[:i]]
+
+    # argparse reads a separate value word starting with "-" as an option and the CLI exits before calling AWS.
+    problems += [
+        f"value '{w.value}' for {prev.value} starts with '-': pass it as {prev.value}=value"
+        for prev, w in zip(rest, rest[1:], strict=False)
+        if is_flag(prev) and "=" not in prev.value and not w.opaque and w.value.startswith("-") and not is_flag(w)
+    ]
+
+    if svc_name == "configure":
+        args, positionals = split_args(rest)
+        if op_cli != "get":
+            return problems + [f"only `aws configure get` is supported (got configure {op_cli})"]
+        if len(positionals) != 1 or positionals[0].opaque or positionals[0].value not in CONFIGURE_GET_NAMES:
+            return problems + [f"aws configure get needs one of {', '.join(sorted(CONFIGURE_GET_NAMES))}"]
+        for flag, vals in args:
+            if flag not in GLOBALS:
+                problems.append(f"unknown flag {flag} for aws configure get")
+            else:
+                problems += check_global_arity(flag, vals) + check_globals(flag, vals)
+        return problems
 
     if svc_name == "cloudformation" and op_cli == "deploy":
         if cmd.name_only:

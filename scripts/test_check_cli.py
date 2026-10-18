@@ -280,6 +280,34 @@ class ValueValidation(unittest.TestCase):
         self.assertEqual(problems("aws iam get-role --role-name=r --output=text"), [])
         self.assertIn("unknown flag --rolename", problems("aws iam get-role --rolename=r")[0])
 
+    def test_flag_equals_dynamic_value(self):
+        # --flag="$DYNAMIC" is still a flag (with a placeholder value), in bash and PowerShell.
+        self.assertEqual(problems('A=$(echo x)\naws iam attach-role-policy --role-name=r --policy-arn="$A"'), [])
+        ps = '$A = Get-Date\naws iam attach-role-policy "--role-name=r" "--policy-arn=$A"'
+        self.assertEqual(problems(ps, "ps"), [])
+        # Literal variables are still substituted and validated in the --flag=value form.
+        self.assertIn("does not match the pattern", problems("R='a b'\naws iam get-role --role-name=\"$R\"")[0])
+        self.assertIn("does not match the pattern", problems("$R = 'a b'\naws iam get-role \"--role-name=$R\"", "ps")[0])
+
+    def test_value_starting_with_dash_needs_flag_equals_form(self):
+        # argparse reads a separate '-x' word as an option: the CLI fails before calling AWS.
+        self.assertIn("starts with '-'", problems("aws iam get-role --role-name '-x'")[0])
+        self.assertIn("starts with '-'", problems("R='-x'\naws iam get-role --role-name \"$R\"")[0])
+        self.assertIn("starts with '-'", problems("$R = '-x'\naws iam get-role --role-name $R", "ps")[0])
+        self.assertEqual(problems("R='-x'\naws iam get-role --role-name=\"$R\""), [])
+        self.assertEqual(problems("$R = '-x'\naws iam get-role \"--role-name=$R\"", "ps"), [])
+
+    def test_version(self):
+        self.assertEqual(problems("aws --version"), [])
+        self.assertIn("unknown global flag --version", problems("aws --version iam get-role --role-name r")[0])
+
+    def test_configure_get(self):
+        self.assertEqual(problems("aws configure get region"), [])
+        self.assertEqual(problems("aws configure get region --profile p"), [])
+        self.assertIn("aws configure get", problems("aws configure get")[0])
+        self.assertIn("aws configure get", problems("aws configure get colour")[0])
+        self.assertIn("aws configure", problems("aws configure set region x")[0])
+
     def test_shorthand_nested_list_and_comma_list(self):
         base = "aws eks associate-access-policy --cluster-name c --principal-arn a --policy-arn p --access-scope "
         self.assertEqual(problems(base + "type=namespace,namespaces=[a,b]"), [])
