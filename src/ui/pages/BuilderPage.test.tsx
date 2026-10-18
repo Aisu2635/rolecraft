@@ -72,7 +72,8 @@ describe("BuilderPage export modal", () => {
     const exportButton = screen.getByRole("button", { name: "Export" });
     exportButton.focus();
     fireEvent.click(exportButton);
-    await screen.findByText("Export is blocked");
+    // The first import of the exporter chunk is cold (and slower still under coverage), so allow it time.
+    await screen.findByText("Export is blocked", undefined, { timeout: 10_000 });
     const dialog = screen.getByText("Export is blocked").closest<HTMLElement>("[role=dialog]")!;
     const jump = within(dialog)
       .getAllByRole("button", { name: /^Jump to/ })
