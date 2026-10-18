@@ -44,4 +44,18 @@ describe("useFocusTarget", () => {
     expect(screen.getByLabelText("first")).not.toHaveFocus();
     expect(useBuilderStore.getState().focusTarget).toBe("field:y");
   });
+
+  it("a target whose element never mounts is dropped on step change and does not steal focus later", () => {
+    act(() => useBuilderStore.getState().focus("field:never"));
+    act(() => useBuilderStore.getState().setStep(2));
+    expect(useBuilderStore.getState().focusTarget).toBeNull();
+    render(<Probe id="field:never" />);
+    expect(screen.getByLabelText("first")).not.toHaveFocus();
+  });
+
+  it("drops a focus target for a grant that is removed", () => {
+    act(() => useBuilderStore.getState().focus("grant:g1"));
+    act(() => useBuilderStore.getState().removeGrant("g1"));
+    expect(useBuilderStore.getState().focusTarget).toBeNull();
+  });
 });

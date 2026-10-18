@@ -96,8 +96,10 @@ function GithubFields(props: { trust: Github; error(path: string, id?: string): 
   const setFields = useBuilderStore((s) => s.setFields);
   const accountId = useBuilderStore((s) => s.model.accountId ?? "");
   const { ref } = trust;
-  const onType = (type: RefType): void =>
+  const onType = (type: RefType): void => {
+    if (type === ref.type) return;
     setTrust({ ...trust, ref: type === "pull_request" ? { type } : { type, value: type === "branch" ? "main" : "" } });
+  };
   return (
     <SpaceBetween size="m">
       <Field path="trust.owner" label="GitHub owner" error={error("trust.owner")}>

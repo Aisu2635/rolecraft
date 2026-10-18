@@ -109,6 +109,14 @@ describe("TrustStep", () => {
     expect(screen.getByLabelText("Branch name")).toHaveValue("main");
   });
 
+  it("re-selecting the current ref type keeps the typed value", () => {
+    render(<TrustStep />);
+    pick("GitHub Actions");
+    type("Branch name", "release");
+    chooseRef("branch");
+    expect(trust()).toMatchObject({ ref: { type: "branch", value: "release" } });
+  });
+
   it("keeps owner and repo when the ref type changes", () => {
     render(<TrustStep />);
     pick("GitHub Actions");
