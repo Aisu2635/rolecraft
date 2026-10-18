@@ -1,7 +1,7 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HAND_WRITTEN_JSON } from "./hero-content";
-import { CHAR_MS, HOLD_MS, STRIKE_MS, useHeroTimeline } from "./useHeroTimeline";
+import { BEAT_MS, CHAR_MS, FLAG_MS, HOLD_MS, STRIKE_MS, useHeroTimeline } from "./useHeroTimeline";
 
 const N = HAND_WRITTEN_JSON.length;
 
@@ -37,18 +37,33 @@ describe("useHeroTimeline", () => {
     expect(result.current.phase).not.toBe("replace");
   });
 
-  it("moves typing -> strike -> replace -> loops back to typing at 0", () => {
+  it("moves typing -> flag -> strike -> replace -> loops back to typing at 0", () => {
     const { result } = renderHook(() => useHeroTimeline(false));
-    // type everything (the first char waits one tick)
-    for (let i = 0; i < 400 && result.current.phase === "typing"; i++) advance(10);
+    for (let i = 0; i < 1000 && result.current.phase === "typing"; i++) advance(10);
+    expect(result.current.phase).toBe("flag");
+    expect(result.current.typed).toBe(N);
+    advance(FLAG_MS - 20);
+    expect(result.current.phase).toBe("flag");
+    advance(30);
     expect(result.current.phase).toBe("strike");
     expect(result.current.typed).toBe(N);
     advance(STRIKE_MS + 1);
     expect(result.current.phase).toBe("replace");
-    advance(HOLD_MS - 10);
+    advance(HOLD_MS - 20);
     expect(result.current.phase).toBe("replace");
-    advance(20);
+    advance(30);
     expect(result.current).toEqual({ phase: "typing", typed: 0 });
+  });
+
+  it("flag lasts 1.4 s and starts after a short beat once typing completes", () => {
+    expect(FLAG_MS).toBe(1400);
+    const { result } = renderHook(() => useHeroTimeline(false));
+    advance(CHAR_MS * N);
+    expect(result.current).toEqual({ phase: "typing", typed: N });
+    advance(BEAT_MS - 1);
+    expect(result.current.phase).toBe("typing");
+    advance(1);
+    expect(result.current.phase).toBe("flag");
   });
 
   it("reduced motion: replace immediately and never schedules timers", () => {

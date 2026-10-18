@@ -1,7 +1,15 @@
 // Static content for the landing hero. Deliberately has no engine imports: the policy below is pinned to the
 // real generator output by hero-content.test.ts, so it can never drift without a failing test.
 
-export const HAND_WRITTEN_JSON = '{\n  "Effect": "Allow",\n  "Action": "s3:*",\n  "Resource": "*"\n}';
+export const HAND_WRITTEN_JSON =
+  '{\n  "Version": "2012-10-17",\n  "Statement": [{\n    "Effect": "Allow",\n    "Action": "s3:*",\n    "Resource": "*"\n  }]\n}';
+
+/** Values the flag phase underlines, and the callouts anchored to their (1-based) lines. */
+export const HAND_BAD_VALUES = ['"s3:*"', '"*"'];
+export const HAND_CALLOUTS = [
+  { line: 5, text: "every S3 action" },
+  { line: 6, text: "every bucket" },
+];
 
 export const HERO_SENTENCE = {
   who: "analytics-team",

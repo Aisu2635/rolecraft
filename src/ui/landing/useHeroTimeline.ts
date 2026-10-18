@@ -1,15 +1,16 @@
 import { useEffect, useState } from "react";
 import { HAND_WRITTEN_JSON } from "./hero-content";
 
-export type HeroPhase = "typing" | "strike" | "replace";
+export type HeroPhase = "typing" | "flag" | "strike" | "replace";
 export interface HeroTimeline {
   phase: HeroPhase;
   typed: number;
 }
 
 export const CHAR_MS = 28;
-/** Beat between the last typed character and the strike-through. */
-export const BEAT_MS = 450;
+/** Beat between the last typed character and the red callouts. */
+export const BEAT_MS = 300;
+export const FLAG_MS = 1400;
 export const STRIKE_MS = 1000;
 export const HOLD_MS = 4600;
 
@@ -22,14 +23,15 @@ function next(s: HeroTimeline): [number, HeroTimeline] {
   if (s.phase === "typing") {
     return s.typed < TOTAL
       ? [CHAR_MS, { phase: "typing", typed: s.typed + 1 }]
-      : [BEAT_MS, { phase: "strike", typed: TOTAL }];
+      : [BEAT_MS, { phase: "flag", typed: TOTAL }];
   }
+  if (s.phase === "flag") return [FLAG_MS, { phase: "strike", typed: TOTAL }];
   if (s.phase === "strike") return [STRIKE_MS, DONE];
   return [HOLD_MS, START];
 }
 
 /**
- * Drives the hero loop: type -> strike -> replace -> repeat. One timer at a time; paused while the tab is hidden;
+ * Drives the hero loop: type -> flag -> strike -> replace -> repeat. One timer at a time; paused while the tab is hidden;
  * with reduced motion it settles on the final state and never schedules anything.
  */
 export function useHeroTimeline(reduced: boolean): HeroTimeline {

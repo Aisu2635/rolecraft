@@ -27,7 +27,11 @@ async function realPolicy() {
 
 describe("hero content", () => {
   it("hand-written JSON is the exact over-broad policy", () => {
-    expect(HAND_WRITTEN_JSON).toBe('{\n  "Effect": "Allow",\n  "Action": "s3:*",\n  "Resource": "*"\n}');
+    expect(HAND_WRITTEN_JSON).toBe(
+      '{\n  "Version": "2012-10-17",\n  "Statement": [{\n    "Effect": "Allow",\n    "Action": "s3:*",\n    "Resource": "*"\n  }]\n}',
+    );
+    expect(HAND_WRITTEN_JSON.split("\n")).toHaveLength(8);
+    expect(JSON.parse(HAND_WRITTEN_JSON).Statement[0]).toEqual({ Effect: "Allow", Action: "s3:*", Resource: "*" });
   });
 
   it("HERO_POLICY_JSON is exactly what the engine generates", async () => {

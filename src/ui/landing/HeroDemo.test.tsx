@@ -49,19 +49,34 @@ describe("HeroDemo", () => {
     stubMatchMedia(false);
     const { container } = render(<HeroDemo />);
     expect(container.querySelector(".lp-stage")).toHaveAttribute("data-phase", "typing");
-    expect(container.querySelector(".lp-hand")?.textContent).toContain("Hand-written");
+    expect(container.querySelector(".lp-hd")?.textContent).toContain("policy.json");
+    expect(container.querySelector(".lp-hd")?.textContent).toContain("written by hand");
     act(() => {
       vi.advanceTimersByTime(28 * 8 + 1);
     });
-    expect(container.querySelector(".lp-code")?.textContent?.startsWith('{\n  "Eff')).toBe(true);
+    expect(container.querySelector(".lp-code")?.textContent?.startsWith('{\n  "Ver')).toBe(true);
     expect(container.querySelector(".lp-strike")).not.toBeNull();
+  });
+
+  it("animated: flag phase shows both red callouts beside the bad values", () => {
+    stubMatchMedia(false);
+    const { container } = render(<HeroDemo />);
+    act(() => {
+      vi.advanceTimersByTime(28 * 120 + 450 + 10);
+    });
+    expect(container.querySelector(".lp-stage")).toHaveAttribute("data-phase", "flag");
+    const flags = Array.from(container.querySelectorAll(".lp-flag")).map((f) => f.textContent);
+    expect(flags).toEqual(["every S3 action", "every bucket"]);
+    const bad = Array.from(container.querySelectorAll(".lp-code .lp-bad")).map((b) => b.textContent);
+    expect(bad).toEqual(['"s3:*"', '"*"']);
+    expect(container.querySelectorAll(".lp-gutter span")).toHaveLength(8);
   });
 
   it("animated: reaches the replace state with the sentence and policy", () => {
     stubMatchMedia(false);
     const { container } = render(<HeroDemo />);
     act(() => {
-      vi.advanceTimersByTime(4000);
+      vi.advanceTimersByTime(7000);
     });
     expect(container.querySelector(".lp-stage")).toHaveAttribute("data-phase", "replace");
     expect(screen.getAllByText("analytics-team").length).toBeGreaterThan(0);
