@@ -1,6 +1,4 @@
 import {
-  CaretDown,
-  FileText,
   Key,
   Layout,
   ListChecks,
@@ -8,10 +6,10 @@ import {
   ShieldCheck,
   Stack,
   Terminal,
-  UsersThree,
 } from "@phosphor-icons/react";
-import { useEffect, useState } from "react";
+import { type CSSProperties, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { HeroDemo } from "../landing/HeroDemo";
 
 interface IndexInfo {
   generatedAt?: string;
@@ -89,6 +87,44 @@ const features = [
   },
 ];
 
+/** Feature cards rise in once as they scroll into view; without IntersectionObserver they are shown at once. */
+function FeatureBand() {
+  const ref = useRef<HTMLElement>(null);
+  const [shown, setShown] = useState<ReadonlySet<number>>(
+    () => new Set(typeof IntersectionObserver === "undefined" ? features.map((_, i) => i) : []),
+  );
+  useEffect(() => {
+    const band = ref.current;
+    if (!band || typeof IntersectionObserver === "undefined") return undefined;
+    const io = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        if (!e.isIntersecting) continue;
+        const i = Number((e.target as HTMLElement).dataset.idx);
+        setShown((prev) => new Set(prev).add(i));
+        io.unobserve(e.target);
+      }
+    });
+    band.querySelectorAll(".lp-feat").forEach((el) => io.observe(el));
+    return () => io.disconnect();
+  }, []);
+  return (
+    <section className="lp-band" ref={ref}>
+      {features.map((f, i) => (
+        <div
+          className={shown.has(i) ? "lp-feat lp-feat-in" : "lp-feat"}
+          key={f.title}
+          data-idx={i}
+          style={{ "--i": i } as CSSProperties}
+        >
+          <div className="lp-fi">{f.icon}</div>
+          <h3>{f.title}</h3>
+          <p>{f.body}</p>
+        </div>
+      ))}
+    </section>
+  );
+}
+
 export function LandingPage() {
   const info = useIndexInfo();
   const count = info?.services?.length;
@@ -127,57 +163,10 @@ export function LandingPage() {
               </span>
             </div>
           </div>
-          <div className="lp-preview" aria-label="Example policy preview">
-            <div className="lp-ph">
-              <FileText size={16} />
-              S3 folder — read only <span className="d">· template</span>
-            </div>
-            <div className="lp-lines">
-              <div className="lp-line">
-                <span className="lp-who">
-                  <UsersThree size={14} />
-                  analytics-team
-                </span>{" "}
-                can
-              </div>
-              <div className="lp-line">
-                <span className="lp-sel v">
-                  list + read
-                  <CaretDown size={12} />
-                </span>{" "}
-                files in{" "}
-                <span className="lp-sel">
-                  data-lake / reports/
-                  <CaretDown size={12} />
-                </span>
-              </div>
-            </div>
-            <pre className="lp-pre">
-              {"{ "}
-              <span className="k">"Action"</span>: <span className="s">"s3:ListBucket"</span>,{"\n  "}
-              <span className="k">"Resource"</span>: <span className="s">"arn:aws:s3:::data-lake"</span>,{"\n  "}
-              <span className="k">"Condition"</span>
-              {": { "}
-              <span className="k">"StringLike"</span>
-              {": {\n    "}
-              <span className="k">"s3:prefix"</span>: <span className="c">"reports/*"</span>
-              {" } } },\n{ "}
-              <span className="k">"Action"</span>: <span className="s">"s3:GetObject"</span>,{"\n  "}
-              <span className="k">"Resource"</span>: <span className="c">"arn:aws:s3:::data-lake/reports/*"</span>
-              {" }"}
-            </pre>
-          </div>
+          <HeroDemo />
         </div>
       </section>
-      <section className="lp-band">
-        {features.map((f) => (
-          <div className="lp-feat" key={f.title}>
-            <div className="lp-fi">{f.icon}</div>
-            <h3>{f.title}</h3>
-            <p>{f.body}</p>
-          </div>
-        ))}
-      </section>
+      <FeatureBand />
       <DesktopNote />
       <footer className="lp-foot">
         <div className="lp-foot-in">
