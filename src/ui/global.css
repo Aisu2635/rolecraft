@@ -63,7 +63,9 @@ a { color: var(--rc-link); }
 /* builder frame: three independently scrolling columns below the top nav */
 .rc-copied { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 .rc-builder-root { display: contents; }
-.rc-ws { display: grid; grid-template-columns: 240px minmax(0, 1fr) 400px; height: calc(100vh - 56px); min-height: 480px; }
+/* The workspace takes what the top nav leaves (it is 57 px with its border), whatever its height. */
+#root:has(.rc-ws) { display: flex; flex-direction: column; height: 100vh; }
+.rc-ws { display: grid; grid-template-columns: 240px minmax(0, 1fr) 400px; flex: 1 1 0; min-height: 480px; }
 .rc-col { min-width: 0; min-height: 0; overflow-y: auto; overflow-x: hidden; box-sizing: border-box; }
 .rc-side { padding: 12px; background: var(--rc-panel); border-right: 1px solid var(--rc-border); }
 .rc-out { padding: 12px 16px; background: var(--rc-panel); border-left: 1px solid var(--rc-border); }

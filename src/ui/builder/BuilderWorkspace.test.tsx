@@ -1,7 +1,12 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { useBuilderStore } from "../../state/builder";
 import { BuilderWorkspace } from "./BuilderWorkspace";
+
+// Vitest serves CSS imports empty, so the stylesheet is read from disk.
+const css = readFileSync(resolve(process.cwd(), "src/ui/global.css"), "utf8");
 
 beforeEach(() => useBuilderStore.getState().reset());
 afterEach(cleanup);
@@ -52,5 +57,19 @@ describe("BuilderWorkspace", () => {
     expect(screen.queryByRole("button", { name: "Next" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Previous" }));
     expect(useBuilderStore.getState().step).toBe(1);
+  });
+
+  // jsdom has no layout; the real-browser check is tests/e2e/layout.spec.ts. The top nav is 57 px (56 + a 1 px
+  // border), so a hard-coded "100vh - 56px" made the page itself scroll by a pixel beside the column scrollbars.
+  it("sizes the workspace from the space left under the top nav, not from an assumed nav height", () => {
+    /** The declarations of the first rule whose selector is exactly `selector`. */
+    const rule = (selector: string): string => {
+      const start = css.indexOf(selector + " {");
+      return start < 0 ? "" : css.slice(start, css.indexOf("}", start));
+    };
+    expect(css).not.toMatch(/100vh\s*-\s*\d+px/);
+    expect(rule("#root:has(.rc-ws)")).toMatch(/display: flex/);
+    expect(rule("#root:has(.rc-ws)")).toMatch(/height: 100vh/);
+    expect(rule(".rc-ws")).toMatch(/flex: 1 1 0/);
   });
 });
