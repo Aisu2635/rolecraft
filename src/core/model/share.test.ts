@@ -2,7 +2,7 @@ import fc from "fast-check";
 import { compressToEncodedURIComponent } from "lz-string";
 import { describe, expect, it } from "vitest";
 import { createEmptyModel, roleModelSchema, type RoleModel } from "./model";
-import { decodeModel, encodeModel, readModelFromHash } from "./share";
+import { decodeModel, encodeModel, MAX_SHARE_LENGTH, readModelFromHash } from "./share";
 
 function full(): RoleModel {
   return {
@@ -41,6 +41,9 @@ describe("share url", () => {
   it("rejects injected extra fields", () => {
     const bad = { ...createEmptyModel(), extra: "x" };
     expect(decodeModel(compressToEncodedURIComponent(JSON.stringify(bad)))).toBeNull();
+  });
+  it("exports the 8,192-character limit", () => {
+    expect(MAX_SHARE_LENGTH).toBe(8_192);
   });
   it("rejects inputs over 8,192 characters", () => {
     expect(decodeModel("A".repeat(8_193))).toBeNull();

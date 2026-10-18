@@ -1,7 +1,17 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createEmptyModel } from "../../core/model/model";
+import { encodeModel } from "../../core/model/share";
 import { useBuilderStore } from "../../state/builder";
 import { BuilderPage } from "./BuilderPage";
+
+const INVALID =
+  "This share link couldn't be opened. It may be incomplete or from a newer version of RoleCraft. Starting with an empty role.";
+const sharedModel = () => ({
+  ...createEmptyModel(),
+  name: "shared-role",
+  grants: [{ id: "g_aaaaaaaa", service: "s3", scope: { type: "all" as const }, access: { type: "levels" as const, levels: ["Read" as const] } }],
+});
 
 function stubWidth(desktop: boolean) {
   vi.stubGlobal("matchMedia", () => ({
@@ -70,5 +80,32 @@ describe("BuilderPage export modal", () => {
     fireEvent.click(jump!);
     await waitFor(() => expect(useBuilderStore.getState().step).toBe(0));
     await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText("GitHub owner")));
+  });
+});
+
+describe("BuilderPage share link", () => {
+  afterEach(() => window.history.replaceState(null, "", "/"));
+
+  it("restores a shared role and opens the Permissions step", async () => {
+    stubWidth(true);
+    window.history.replaceState(null, "", "/#s=" + encodeModel(sharedModel()));
+    render(<BuilderPage />);
+    await waitFor(() => expect(useBuilderStore.getState().model.name).toBe("shared-role"));
+    expect(useBuilderStore.getState().step).toBe(1);
+    expect(screen.queryByText(INVALID)).toBeNull();
+  });
+  it("warns, dismissibly, when the link is invalid, and starts empty", async () => {
+    stubWidth(true);
+    window.history.replaceState(null, "", "/#s=garbage");
+    render(<BuilderPage />);
+    expect(await screen.findByText(INVALID)).toBeInTheDocument();
+    expect(useBuilderStore.getState().model.name).toBe("rolecraft-role");
+    fireEvent.click(screen.getByRole("button", { name: /dismiss/i }));
+    await waitFor(() => expect(screen.queryByText(INVALID)).toBeNull());
+  });
+  it("offers Share beside Copy", () => {
+    stubWidth(true);
+    render(<BuilderPage />);
+    expect(screen.getByRole("button", { name: "Share" })).toBeInTheDocument();
   });
 });

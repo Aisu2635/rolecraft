@@ -4,6 +4,8 @@ import { useBuilderStore, type Step } from "../../state/builder";
 import { StepHeader } from "./StepHeader";
 
 export function BuilderWorkspace(props: {
+  /** Shown above the step header, e.g. a dismissible notice. */
+  banner?: ReactNode;
   sidebar: ReactNode;
   steps: [ReactNode, ReactNode, ReactNode];
   output: ReactNode;
@@ -16,6 +18,7 @@ export function BuilderWorkspace(props: {
         {props.sidebar}
       </aside>
       <main className="rc-col rc-main">
+        {props.banner}
         <StepHeader step={step} onSelect={setStep} />
         <div className="rc-step-body">{props.steps[step]}</div>
         <div className="rc-step-nav">
