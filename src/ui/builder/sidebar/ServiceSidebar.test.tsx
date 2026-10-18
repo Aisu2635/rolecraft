@@ -78,6 +78,14 @@ describe("ServiceSidebar", () => {
     expect(ev.defaultPrevented).toBe(false);
   });
 
+  it("ignores keydown events that carry no key", () => {
+    setup();
+    const ev = new KeyboardEvent("keydown", { ctrlKey: true, cancelable: true });
+    Object.defineProperty(ev, "key", { value: undefined });
+    expect(() => window.dispatchEvent(ev)).not.toThrow();
+    expect(ev.defaultPrevented).toBe(false);
+  });
+
   it("prevents the browser default for Ctrl+K", () => {
     setup();
     const ev = new KeyboardEvent("keydown", { key: "k", ctrlKey: true, cancelable: true });
@@ -120,6 +128,7 @@ describe("ServiceSidebar", () => {
     const role = screen.getByText("In this role").closest("section")!;
     expect(within(role).getByRole("button", { name: "Amazon S3" })).toBeInTheDocument();
     expect(within(role).getByText("2")).toBeInTheDocument();
+    expect(within(role).getByText("permissions")).toBeInTheDocument();
   });
 
   it("renders categories and A-Z lazily", async () => {

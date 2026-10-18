@@ -18,6 +18,15 @@ export const SERVICE_SEARCH_ID = "service-search";
 const listStyle = { listStyle: "none", margin: 0, padding: 0 } as const;
 const rowStyle = { display: "flex", justifyContent: "space-between", alignItems: "center" } as const;
 
+const hiddenStyle = {
+  position: "absolute",
+  width: 1,
+  height: 1,
+  overflow: "hidden",
+  clip: "rect(0 0 0 0)",
+  whiteSpace: "nowrap",
+} as const;
+
 interface Actions {
   choose(key: string): void;
   pending: ReadonlySet<string>;
@@ -40,7 +49,12 @@ function ServiceList(props: {
           >
             {e.name}
           </Button>
-          {props.counts && <span>{props.counts.get(e.key)}</span>}
+          {props.counts && (
+            <span>
+              {props.counts.get(e.key)}
+              <span style={hiddenStyle}> {props.counts.get(e.key) === 1 ? "permission" : "permissions"}</span>
+            </span>
+          )}
         </li>
       ))}
     </ul>
@@ -83,7 +97,7 @@ export function ServiceSidebar(): JSX.Element {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+      if ((e.ctrlKey || e.metaKey) && e.key?.toLowerCase() === "k") {
         e.preventDefault();
         input.current?.focus();
       }
