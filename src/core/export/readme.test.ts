@@ -4,10 +4,11 @@ import { explain } from "../explain/explain";
 import { generate } from "../generate";
 import { createEmptyModel, type Grant, type RoleModel } from "../model/model";
 import { REFERENCE_CASES } from "./__fixtures__/cases";
+import { VARIANT_CASES } from "./__fixtures__/variants";
 import { exportCliBash } from "./cli-bash";
 import { exportCliPowerShell } from "./cli-ps";
 import { cfnDeleteCommand, cfnDeployCommand, exportCloudFormation } from "./cloudformation";
-import { escapeMarkdown, exportReadme } from "./readme";
+import { applySections, escapeMarkdown, exportReadme } from "./readme";
 import { exportTerraform, TF_AWS_PROVIDER_VERSION } from "./terraform";
 import type { ExportInput } from "./types";
 
@@ -514,5 +515,38 @@ describe("exportReadme", () => {
     const input = make("s3-group");
     input.summary = { can: [], cannot: [] };
     expect(section(readme(input), "What this policy allows")).toContain("policy.json");
+  });
+});
+
+describe("applySections", () => {
+  const all: [string, () => ExportInput][] = [...Object.entries(REFERENCE_CASES), ...Object.entries(VARIANT_CASES)];
+  /** The README's How-to-apply text: from after its heading to the Permissions heading. */
+  const howTo = (md: string): string => {
+    const start = md.indexOf("\n## How to apply\n\n") + "\n## How to apply\n\n".length;
+    return md.slice(start, md.indexOf("\n## Permissions you need to apply this\n"));
+  };
+
+  it.each(all)("joined equals the README's How to apply text: %s", (_n, mk) => {
+    const input = mk();
+    expect(applySections(input).map((s) => s.markdown).join("\n")).toBe(howTo(readme(input)));
+  });
+
+  it("splits at the ### headings after a preamble with an empty title", () => {
+    const sections = applySections(make("s3-group"));
+    expect(sections.map((s) => s.title)).toEqual([
+      "",
+      "AWS CLI — bash",
+      "AWS CLI — PowerShell",
+      "Re-running the AWS CLI scripts",
+      "Terraform",
+      "CloudFormation",
+    ]);
+    expect(sections[0]?.markdown).toContain("2.15.38");
+    const ps = sections[2]?.markdown ?? "";
+    for (const text of ["Unblock-File", "-ExecutionPolicy Bypass", "pwsh -File"]) expect(ps).toContain(text);
+  });
+
+  it("is empty while no trust policy could be generated", () => {
+    expect(applySections(build({ trust: { kind: "github", owner: "", repo: "r", ref: { type: "branch", value: "main" } } }))).toEqual([]);
   });
 });
