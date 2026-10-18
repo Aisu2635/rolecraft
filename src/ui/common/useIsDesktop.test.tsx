@@ -50,6 +50,25 @@ describe("useIsDesktop", () => {
     unmount();
     expect(s.listeners.size).toBe(0);
   });
+  it("falls back to addListener/removeListener on old Safari", () => {
+    let matches = false;
+    const listeners = new Set<() => void>();
+    const mql = {
+      get matches() {
+        return matches;
+      },
+      addListener: (l: () => void) => listeners.add(l),
+      removeListener: (l: () => void) => listeners.delete(l),
+    };
+    vi.stubGlobal("matchMedia", vi.fn().mockReturnValue(mql));
+    const { unmount } = render(<Probe />);
+    expect(listeners.size).toBe(1);
+    matches = true;
+    act(() => listeners.forEach((l) => l()));
+    expect(screen.getByText("desktop")).toBeInTheDocument();
+    unmount();
+    expect(listeners.size).toBe(0);
+  });
   it("treats a missing matchMedia as desktop", () => {
     vi.stubGlobal("matchMedia", undefined);
     render(<Probe />);

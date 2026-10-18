@@ -8,8 +8,13 @@ export function useIsDesktop(query: string = DESKTOP_QUERY): boolean {
     (cb: () => void) => {
       if (typeof window.matchMedia !== "function") return () => {};
       const mql = window.matchMedia(query);
-      mql.addEventListener("change", cb);
-      return () => mql.removeEventListener("change", cb);
+      // Safari < 14 only has the deprecated addListener/removeListener.
+      if (typeof mql.addEventListener === "function") {
+        mql.addEventListener("change", cb);
+        return () => mql.removeEventListener("change", cb);
+      }
+      mql.addListener(cb);
+      return () => mql.removeListener(cb);
     },
     [query],
   );

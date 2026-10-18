@@ -50,8 +50,7 @@ export function CopyFallbackModal(props: {
       {open && (
         <SpaceBetween size="s">
           <Box>
-            Your browser blocked automatic copying. The text is selected below;
-            press Ctrl+C (Cmd+C on Mac).
+            Your browser blocked automatic copying. The text is selected below. Press Ctrl+C (⌘C on Mac) to copy.
           </Box>
           <textarea
             ref={ref}

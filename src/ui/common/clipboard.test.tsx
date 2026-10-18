@@ -62,6 +62,11 @@ describe("CopyFallbackModal", () => {
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(onDismiss).toHaveBeenCalled();
   });
+  it("shows the exact copy hint", async () => {
+    render(<CopyFallbackModal text="x" onDismiss={() => {}} />);
+    await screen.findByRole("textbox");
+    expect(screen.getByText(/Press Ctrl\+C \(⌘C on Mac\) to copy\./)).toBeInTheDocument();
+  });
 });
 
 function Harness({ text }: { text: string }) {
