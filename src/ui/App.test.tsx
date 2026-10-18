@@ -19,7 +19,7 @@ describe("App shell", () => {
         <AppRoutes />
       </MemoryRouter>,
     );
-    expect(screen.getByRole("heading", { name: "Builder" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Review and export/ })).toBeInTheDocument();
   });
 
   it("toggles the theme label", () => {

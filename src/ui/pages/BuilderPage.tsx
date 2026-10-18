@@ -1,10 +1,14 @@
-import { ComingSoon } from "./ComingSoon";
+import { Builder } from "../builder/Builder";
+import { BuilderErrorBoundary } from "../builder/BuilderErrorBoundary";
+import { DesktopOnlyCard } from "../builder/DesktopOnlyCard";
+import { useIsDesktop } from "../common/useIsDesktop";
 
 export function BuilderPage() {
-  return (
-    <ComingSoon
-      title="Builder"
-      message="The visual builder is on the way. The policy engine behind it is already built and tested."
-    />
+  return useIsDesktop() ? (
+    <BuilderErrorBoundary>
+      <Builder />
+    </BuilderErrorBoundary>
+  ) : (
+    <DesktopOnlyCard />
   );
 }
