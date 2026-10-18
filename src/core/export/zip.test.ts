@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { strFromU8, unzipSync } from "fflate";
 import { describe, expect, it } from "vitest";
 import { REFERENCE_CASES } from "./__fixtures__/cases";
@@ -81,7 +82,7 @@ describe("exportZip", () => {
 
   it("produces the same bytes in every timezone", () => {
     // Vitest runs from the repository root (import.meta.url is not a file URL under jsdom).
-    const zipModule = resolve("src/core/export/zip.ts");
+    const zipModule = pathToFileURL(resolve("src/core/export/zip.ts")).href;
     const files: ExportFile[] = [
       { filename: "create-role.sh", language: "bash", content: "echo hi\n" },
       { filename: "README.md", language: "markdown", content: "# hi\n" },
