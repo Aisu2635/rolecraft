@@ -135,11 +135,13 @@ describe("ServiceSidebar", () => {
     setup();
     await screen.findByText("Popular");
     expect(screen.getByText("Browse by category")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "A2c" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: /^A.Z$/ }));
-    expect(await screen.findByRole("button", { name: "A2c" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /^Storage$/ }));
-    expect(screen.getAllByRole("button", { name: "Amazon S3" }).length).toBeGreaterThan(1);
+    // Text queries, not role queries: computing roles over ~450 buttons is what made this test slow.
+    expect(screen.queryByText("A2c")).toBeNull();
+    fireEvent.click(screen.getByText("A–Z"));
+    expect(await screen.findByText("A2c")).toBeInTheDocument();
+    const s3Before = screen.getAllByText("Amazon S3").length;
+    fireEvent.click(screen.getByText("Storage"));
+    expect(screen.getAllByText("Amazon S3")).toHaveLength(s3Before + 1);
   });
 
   it("shows an inline error when a service fails and recovers on Retry", async () => {

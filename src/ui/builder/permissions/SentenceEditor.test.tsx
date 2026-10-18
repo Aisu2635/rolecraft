@@ -40,14 +40,23 @@ describe("SentenceEditor", () => {
     expect(verbText()).toBe("list + read");
   });
 
-  it("lists the generate() message for an invalid bucket under the row", async () => {
+  it("shows an invalid bucket's message once, on the field, not again in the row", async () => {
     const cat = await readyCatalog("s3");
     store().addGrant(grantFor(cat, "s3"));
     render(withCatalog(cat, <SentenceEditor />));
     type("Bucket", "Bad_Bucket");
-    expect(screen.getAllByText(/not a valid S3 bucket name/).length).toBeGreaterThan(0);
+    fireEvent.blur(screen.getByLabelText("Bucket"));
+    expect(screen.getAllByText(/not a valid S3 bucket name/)).toHaveLength(1);
     type("Bucket", "data-lake");
     expect(screen.queryByText(/not a valid S3 bucket name/)).toBeNull();
+  });
+
+  it("lists a path-less error in the row, since no field shows it", async () => {
+    const cat = await readyCatalog("textract");
+    const foreign = "arn:aws:ec2:us-east-1:123456789012:instance/i-1";
+    store().addGrant({ ...grantFor(cat, "textract"), scope: { type: "arns", arns: [foreign] } });
+    render(withCatalog(cat, <SentenceEditor />));
+    expect(screen.getAllByText(/is not a recognized textract resource ARN/)).toHaveLength(1);
   });
 
   it("removes the optional KMS key instead of storing an empty string", async () => {
