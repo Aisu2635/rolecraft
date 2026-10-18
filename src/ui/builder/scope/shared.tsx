@@ -6,6 +6,7 @@ import { useState, type JSX, type ReactNode } from "react";
 import type { Issue } from "../../../core/types";
 import { useBuilderStore } from "../../../state/builder";
 import { errorTextAt } from "../issues";
+import { useFocusTarget } from "../useFocusTarget";
 
 export const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
@@ -40,13 +41,15 @@ function ListItem(props: {
   value: string;
   error?: string | undefined;
   canRemove: boolean;
+  focusId?: string | undefined;
   onChange(v: string): void;
   onRemove(): void;
 }): JSX.Element {
   const [touched, setTouched] = useState(false);
   const reveal = useBuilderStore((s) => s.revealErrors);
+  const ref = useFocusTarget<HTMLDivElement>(props.focusId ?? "", () => setTouched(true));
   return (
-    <div onBlur={() => setTouched(true)}>
+    <div ref={ref} onBlur={() => setTouched(true)}>
       <FormField errorText={touched || reveal ? props.error : undefined} stretch>
         <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
           <div style={{ flex: 1 }}>
@@ -77,6 +80,8 @@ export function StringList(props: {
   issues: Issue[];
   /** Path of row `i`, e.g. `data.prefixes[0]`. */
   pathOf(i: number): string;
+  /** Focus-target id of row `i`, so a "Jump to" can land on it. */
+  focusIdOf?(i: number): string;
   onChange(values: string[]): void;
 }): JSX.Element {
   const { values, onChange } = props;
@@ -90,6 +95,7 @@ export function StringList(props: {
           value={v}
           error={errorTextAt(props.issues, props.pathOf(i))}
           canRemove={values.length > props.min}
+          focusId={props.focusIdOf?.(i)}
           onChange={(next) => onChange(values.map((x, j) => (j === i ? next : x)))}
           onRemove={() => onChange(values.filter((_, j) => j !== i))}
         />

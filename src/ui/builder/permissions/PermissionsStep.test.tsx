@@ -34,4 +34,14 @@ describe("PermissionsStep", () => {
     fireEvent.click(screen.getByRole("button", { name: "Remove Amazon EC2 permission" }));
     expect(screen.getAllByRole("group", { name: /permission$/ })).toHaveLength(1);
   });
+
+  it("explains in plain English what the role can do, below the editor", async () => {
+    const cat = await readyCatalog("s3");
+    useBuilderStore.getState().addGrant({
+      ...grantFor(cat, "s3", "a"),
+      scope: { type: "module", data: { bucket: "my-bucket", prefixes: [""], allowNavigation: false } },
+    });
+    render(withCatalog(cat, <PermissionsStep />));
+    expect(screen.getByRole("heading", { name: "Can" })).toBeInTheDocument();
+  });
 });

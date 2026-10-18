@@ -1,4 +1,6 @@
 import { useEnsureCatalog } from "../../state/useEnsureCatalog";
+import { OutputPanel } from "./output/OutputPanel";
+import { ReviewStep } from "./review/ReviewStep";
 import { BuilderWorkspace } from "./BuilderWorkspace";
 import { PermissionsStep } from "./permissions/PermissionsStep";
 import { TrustStep } from "./trust/TrustStep";
@@ -13,9 +15,9 @@ export function Builder() {
       steps={[
         <TrustStep key="0" />,
         <PermissionsStep key="1" />,
-        <p key="2">Review step</p>,
+        <ReviewStep key="2" />,
       ]}
-      output={<p>Output</p>}
+      output={<OutputPanel />}
     />
   );
 }
