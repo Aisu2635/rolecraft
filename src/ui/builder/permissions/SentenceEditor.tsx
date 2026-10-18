@@ -17,6 +17,7 @@ import { ServiceUnavailable, useServiceInfo } from "./ServiceStatus";
 import { scopeSummary } from "./summary";
 import { applyVerb, verbChoices } from "./verbs";
 
+const INVALID_FIELD = 'input[aria-invalid="true"]:not([disabled]), textarea[aria-invalid="true"]';
 const rowStyle = { display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" } as const;
 
 function GrantEditor(props: { grant: Grant; svc: SlimService; issues: Issue[]; name: string }): JSX.Element {
@@ -76,7 +77,8 @@ function GrantRow(props: { grant: Grant; issues: Issue[] }): JSX.Element {
   const info = useServiceInfo(grant.service);
   const { svc, name } = info;
   const removeGrant = useBuilderStore((s) => s.removeGrant);
-  const ref = useFocusTarget<HTMLDivElement>("grant:" + grant.id);
+  // A Jump to reveals the errors first, so the invalid field is marked by the time the row takes focus.
+  const ref = useFocusTarget<HTMLDivElement>("grant:" + grant.id, undefined, INVALID_FIELD);
   return (
     <div ref={ref} role="group" aria-label={`${name} permission`} className="rc-grant">
       <SpaceBetween size="xs">

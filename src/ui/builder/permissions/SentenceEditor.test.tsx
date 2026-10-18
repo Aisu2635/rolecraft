@@ -201,4 +201,16 @@ describe("SentenceEditor", () => {
     expect(row.contains(document.activeElement)).toBe(true);
     expect(within(row).getByLabelText("Bucket")).toBeInTheDocument();
   });
+
+  it("a Jump to on a grant with an invalid field focuses that field, not the remove button", async () => {
+    const cat = await readyCatalog("s3");
+    store().addGrant(grantFor(cat, "s3", "g1"));
+    render(withCatalog(cat, <SentenceEditor />));
+    type("Bucket", "Bad_Bucket");
+    act(() => {
+      store().revealAllErrors();
+      store().focus("grant:g1");
+    });
+    expect(screen.getByLabelText("Bucket")).toHaveFocus();
+  });
 });

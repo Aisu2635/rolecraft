@@ -6,8 +6,13 @@ const FOCUSABLE = 'input:not([disabled]), select, textarea, button:not([disabled
 /**
  * Attach the returned ref to a wrapper. When the store's focusTarget becomes `id` the wrapper is scrolled into
  * view, its first focusable element is focused and the target is cleared. `onFocus` runs just before the clear.
+ * With `prefer`, the first element matching that selector is focused instead when there is one.
  */
-export function useFocusTarget<T extends HTMLElement>(id: string, onFocus?: () => void): RefObject<T | null> {
+export function useFocusTarget<T extends HTMLElement>(
+  id: string,
+  onFocus?: () => void,
+  prefer?: string,
+): RefObject<T | null> {
   const ref = useRef<T | null>(null);
   const active = useBuilderStore((s) => s.focusTarget === id);
   useEffect(() => {
@@ -15,9 +20,9 @@ export function useFocusTarget<T extends HTMLElement>(id: string, onFocus?: () =
     if (!active || !el) return;
     // jsdom has no scrollIntoView.
     if (typeof el.scrollIntoView === "function") el.scrollIntoView({ block: "center" });
-    el.querySelector<HTMLElement>(FOCUSABLE)?.focus();
+    ((prefer ? el.querySelector<HTMLElement>(prefer) : null) ?? el.querySelector<HTMLElement>(FOCUSABLE))?.focus();
     onFocus?.();
     useBuilderStore.getState().focus(null);
-  }, [active, onFocus]);
+  }, [active, onFocus, prefer]);
   return ref;
 }
