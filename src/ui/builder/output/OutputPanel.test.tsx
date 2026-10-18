@@ -100,11 +100,12 @@ describe("OutputPanel", () => {
     expect(store().focusTarget).toBe("field:trust.owner");
   });
 
-  it("keeps Copy available while errors exist", async () => {
+  it("disables Copy while errors leave no policy to copy", async () => {
     const cat = await s3GroupModel({ bucket: "Bad Bucket" });
+    expect(ready(cat).policy).toBeNull();
     render(withCatalog(cat, <OutputPanel />));
     expect(screen.getByText("This policy has errors. Fix them before you apply it.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Copy" })).not.toBeDisabled();
+    expect(screen.getByRole("button", { name: "Copy" })).toBeDisabled();
   });
 
   it("shows a spinner while service data loads", async () => {
@@ -146,5 +147,61 @@ describe("OutputPanel", () => {
     expect(screen.getByText("cli body")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Copy" }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("aws iam"));
+  });
+});
+
+describe("OutputPanel copy and tab fallbacks", () => {
+  it("disables Copy when the active tab has no text", async () => {
+    const cat = await readyCatalog("s3");
+    act(() => store().setTrust({ kind: "principal", target: "group", name: "devs" }));
+    render(
+      withCatalog(cat, <OutputPanel extraTabs={[{ id: "cli", label: "CLI", content: <p>loading</p> }]} />),
+    );
+    expect(screen.getByRole("button", { name: "Copy" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("tab", { name: "Trust" }));
+    expect(screen.getByRole("button", { name: "Copy" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("tab", { name: "CLI" }));
+    expect(screen.getByRole("button", { name: "Copy" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Copy" }));
+    expect(writeText).not.toHaveBeenCalled();
+  });
+
+  it("enables Copy for a tab that has text", async () => {
+    const cat = await s3GroupModel();
+    render(
+      withCatalog(cat, <OutputPanel extraTabs={[{ id: "cli", label: "CLI", content: <p>x</p>, copyText: "aws" }]} />),
+    );
+    expect(screen.getByRole("button", { name: "Copy" })).not.toBeDisabled();
+    fireEvent.click(screen.getByRole("tab", { name: "CLI" }));
+    expect(screen.getByRole("button", { name: "Copy" })).not.toBeDisabled();
+  });
+
+  it("falls back to the Policy tab when the active tab disappears", async () => {
+    const cat = await s3GroupModel();
+    const tabs = [{ id: "cli", label: "CLI", content: <p>cli body</p>, copyText: "aws" }];
+    const { rerender } = render(withCatalog(cat, <OutputPanel extraTabs={tabs} />));
+    fireEvent.click(screen.getByRole("tab", { name: "CLI" }));
+    rerender(withCatalog(cat, <OutputPanel extraTabs={[]} />));
+    expect(screen.getByRole("tab", { name: "Policy" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByLabelText("Policy JSON")).toBeInTheDocument();
+  });
+
+  it("renders actions given as a function of the derived input", async () => {
+    const cat = await s3GroupModel();
+    render(withCatalog(cat, <OutputPanel actions={(input) => <button>Export {input.model.grants.length}</button>} />));
+    expect(screen.getByRole("button", { name: "Export 1" })).toBeInTheDocument();
+  });
+
+  it("hands useExtraTabs the derived input and the active tab", async () => {
+    const cat = await s3GroupModel();
+    const seen: [boolean, string][] = [];
+    const useExtraTabs = (input: unknown, active: string) => {
+      seen.push([input !== null, active]);
+      return [{ id: "cli", label: "CLI", content: <p>cli body</p>, copyText: "aws" }];
+    };
+    render(withCatalog(cat, <OutputPanel useExtraTabs={useExtraTabs} />));
+    fireEvent.click(screen.getByRole("tab", { name: "CLI" }));
+    expect(seen[0]).toEqual([true, "policy"]);
+    expect(seen[seen.length - 1]).toEqual([true, "cli"]);
   });
 });

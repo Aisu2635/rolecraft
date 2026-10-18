@@ -17,6 +17,17 @@ const nodePaths = builtinModules.filter((m) => !m.startsWith("_")).map((name) =>
 const nodePatterns = [{ group: ["node:*"], message: NODE_FREE }];
 const coreTests = ["src/core/**/*.test.ts", "src/core/**/__test__/**", "src/core/**/__fixtures__/**"];
 
+// The exporters pull in yaml (CloudFormation) and fflate (ZIP): the UI reaches them only through the lazy chunk.
+// (A gitignore-style `**/core/export` would also match core/export/json and the fixtures, so these are regexes.)
+const EXPORTER_MODULES = ["cli-bash", "cli-ps", "terraform", "cloudformation", "readme", "zip"];
+const lazyExporterPatterns = [
+  {
+    regex: `(^|/)core/export(/index|/(${EXPORTER_MODULES.join("|")}))?$`,
+    message: "Load exporters through src/ui/export/lazy.ts so yaml and fflate stay out of the initial bundle.",
+    allowTypeImports: true,
+  },
+];
+
 export default tseslint.config(
   { ignores: ["dist", "coverage", "docs", ".superpowers"] },
   js.configs.recommended,
@@ -46,6 +57,15 @@ export default tseslint.config(
           message: "src/core must be pure and browser-API free.",
         })),
       ],
+    },
+  },
+  {
+    files: ["src/ui/**", "src/state/**"],
+    // Tests may use the exporters directly: they are not part of the bundle.
+    ignores: ["src/ui/export/exporters.ts", "**/*.test.ts", "**/*.test.tsx"],
+    rules: {
+      "no-restricted-imports": "off",
+      "@typescript-eslint/no-restricted-imports": ["error", { patterns: lazyExporterPatterns }],
     },
   },
 );

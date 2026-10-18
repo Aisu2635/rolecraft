@@ -16,7 +16,8 @@ function jump(issue: Issue): void {
   s.focus(to.target);
 }
 
-export function IssuesList(props: { issues: Issue[]; severities?: Severity[] }): JSX.Element {
+/** `onJump` runs first, e.g. to close a modal that covers the builder. */
+export function IssuesList(props: { issues: Issue[]; severities?: Severity[]; onJump?: () => void }): JSX.Element {
   const shown = props.severities ? props.issues.filter((i) => props.severities!.includes(i.severity)) : props.issues;
   if (shown.length === 0) return <Box color="text-body-secondary">No issues.</Box>;
   return (
@@ -25,7 +26,14 @@ export function IssuesList(props: { issues: Issue[]; severities?: Severity[] }):
         <li key={n} style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap", padding: "2px 0" }}>
           <StatusIndicator type={issue.severity}>{issue.message}</StatusIndicator>
           {focusIdFor(issue) !== null && (
-            <Button variant="inline-link" ariaLabel={`Jump to: ${issue.message}`} onClick={() => jump(issue)}>
+            <Button
+              variant="inline-link"
+              ariaLabel={`Jump to: ${issue.message}`}
+              onClick={() => {
+                props.onJump?.();
+                jump(issue);
+              }}
+            >
               Jump to
             </Button>
           )}

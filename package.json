@@ -15,6 +15,7 @@
     "test:watch": "vitest",
     "sync-data": "tsx scripts/sync-aws-data.ts",
     "preview": "vite preview",
+    "check-bundle": "tsx scripts/check-bundle.ts",
     "export-fixtures": "tsx scripts/export-fixtures.ts"
   },
   "dependencies": {

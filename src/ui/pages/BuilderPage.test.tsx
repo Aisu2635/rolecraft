@@ -31,6 +31,14 @@ describe("BuilderPage", () => {
       screen.getByRole("button", { name: /Review and export/ }),
     ).toBeInTheDocument();
   });
+  it("offers Export and the CLI, Terraform and CloudFormation tabs", () => {
+    stubWidth(true);
+    render(<BuilderPage />);
+    expect(screen.getByRole("button", { name: "Export" })).toBeInTheDocument();
+    for (const name of ["CLI", "Terraform", "CloudFormation"]) {
+      expect(screen.getByRole("tab", { name })).toBeInTheDocument();
+    }
+  });
   it("shows the desktop-only card below 1024px", () => {
     stubWidth(false);
     render(<BuilderPage />);

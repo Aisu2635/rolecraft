@@ -1,4 +1,6 @@
 import { useEnsureCatalog } from "../../state/useEnsureCatalog";
+import { ExportButton } from "../export/ExportModal";
+import { useFormatTabs } from "../export/FormatTabs";
 import { OutputPanel } from "./output/OutputPanel";
 import { ReviewStep } from "./review/ReviewStep";
 import { BuilderWorkspace } from "./BuilderWorkspace";
@@ -17,7 +19,7 @@ export function Builder() {
         <PermissionsStep key="1" />,
         <ReviewStep key="2" />,
       ]}
-      output={<OutputPanel />}
+      output={<OutputPanel useExtraTabs={useFormatTabs} actions={(input) => <ExportButton input={input} />} />}
     />
   );
 }

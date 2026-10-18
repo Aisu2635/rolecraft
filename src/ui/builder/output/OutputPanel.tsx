@@ -6,6 +6,7 @@ import SpaceBetween from "@cloudscape-design/components/space-between";
 import Tabs, { type TabsProps } from "@cloudscape-design/components/tabs";
 import { useContext, useRef, useState, type JSX, type ReactNode } from "react";
 import { stringifyPolicy } from "../../../core/export/json";
+import type { ExportInput } from "../../../core/export/types";
 import { policyLimit } from "../../../core/validate/size";
 import { useBuilderStore } from "../../../state/builder";
 import { CatalogContext } from "../../../state/catalog";
@@ -21,8 +22,10 @@ export type ExtraTab = TabsProps.Tab & { copyText?: string };
 
 export interface OutputPanelProps {
   extraTabs?: ExtraTab[];
-  /** Beside Copy: the Export button. */
-  actions?: ReactNode;
+  /** A hook (called every render, so it must be a stable function) that supplies extra tabs from the derived input. */
+  useExtraTabs?: (input: ExportInput | null, active: string) => ExtraTab[];
+  /** Beside Copy: the Export button (a function gets the derived input once the output is ready). */
+  actions?: ReactNode | ((input: ExportInput) => ReactNode);
   /** Beside Copy: the Share button. */
   share?: ReactNode;
 }
@@ -34,6 +37,8 @@ export function OutputPanel(props: OutputPanelProps = {}): JSX.Element {
   const { copy, modal } = useCopy();
   const [active, setActive] = useState("policy");
   const issuesRef = useRef<HTMLDivElement | null>(null);
+  const derivedInput = derived.kind === "ready" ? derived.input : null;
+  const hookTabs = props.useExtraTabs?.(derivedInput, active) ?? [];
 
   if (derived.kind === "loading") {
     return (
@@ -54,9 +59,11 @@ export function OutputPanel(props: OutputPanelProps = {}): JSX.Element {
   const { result } = derived.input;
   const policyText = result.policy ? stringifyPolicy(result.policy) : "";
   const trustText = result.trust ? stringifyPolicy(result.trust) : "";
-  const extra = props.extraTabs ?? [];
+  const extra = [...(props.extraTabs ?? []), ...hookTabs];
+  // A tab that is no longer offered (e.g. a format tab removed) falls back to Policy.
+  const current = ["policy", "trust", ...extra.map((t) => t.id)].includes(active) ? active : "policy";
   const copyText =
-    active === "policy" ? policyText : active === "trust" ? trustText : (extra.find((t) => t.id === active)?.copyText ?? "");
+    current === "policy" ? policyText : current === "trust" ? trustText : (extra.find((t) => t.id === current)?.copyText ?? "");
   const hasErrors = result.issues.some((i) => i.severity === "error");
   const trustEmpty =
     model.trust.kind === "principal"
@@ -88,17 +95,17 @@ export function OutputPanel(props: OutputPanelProps = {}): JSX.Element {
   return (
     <SpaceBetween size="m">
       {hasErrors && <Alert type="error">This policy has errors. Fix them before you apply it.</Alert>}
-      <Tabs tabs={tabs} activeTabId={active} onChange={(e) => setActive(e.detail.activeTabId)} />
+      <Tabs tabs={tabs} activeTabId={current} onChange={(e) => setActive(e.detail.activeTabId)} />
       <StatusLine
         issues={result.issues}
         onActivate={() => issuesRef.current?.scrollIntoView?.({ block: "start", behavior: "smooth" })}
       />
       <SizeMeter size={result.sizes.policy} limit={policyLimit(model.policyMode, model.trust)} />
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-        <Button iconName="copy" onClick={() => void copy(copyText)}>
+        <Button iconName="copy" disabled={copyText === ""} onClick={() => void copy(copyText)}>
           Copy
         </Button>
-        {props.actions}
+        {typeof props.actions === "function" ? props.actions(derived.input) : props.actions}
         {props.share}
       </div>
       {modal}

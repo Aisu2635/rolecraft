@@ -41,3 +41,20 @@ describe("IssuesList", () => {
     expect([useBuilderStore.getState().step, useBuilderStore.getState().focusTarget]).toEqual([1, "grant:g1"]);
   });
 });
+
+describe("IssuesList onJump", () => {
+  it("calls onJump before navigating", () => {
+    const order: string[] = [];
+    const unsub = useBuilderStore.subscribe(() => order.push("store"));
+    render(
+      <IssuesList
+        issues={[{ id: "E_X", severity: "error", message: "bad", grantId: "g1" } as never]}
+        onJump={() => order.push("jump")}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Jump to: bad" }));
+    unsub();
+    expect(order[0]).toBe("jump");
+    expect(useBuilderStore.getState().step).toBe(1);
+  });
+});
