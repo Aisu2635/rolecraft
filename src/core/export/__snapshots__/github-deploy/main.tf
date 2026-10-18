@@ -22,6 +22,9 @@ provider "aws" {
 #   client_id_list = ["sts.amazonaws.com"]
 # }
 
+# The plan stops (precondition on the role) if these credentials aren't for the trust policy's account.
+data "aws_caller_identity" "current" {}
+
 resource "aws_iam_role" "github_deploy" {
   name        = "github-deploy"
   description = "Created with RoleCraft"
@@ -46,6 +49,13 @@ resource "aws_iam_role" "github_deploy" {
   ]
 }
 ROLECRAFT_JSON
+
+  lifecycle {
+    precondition {
+      condition     = data.aws_caller_identity.current.account_id == "123456789012"
+      error_message = "The trust policy trusts GitHub through account 123456789012's OIDC provider: apply this with credentials for account 123456789012."
+    }
+  }
 }
 
 resource "aws_iam_policy" "github_deploy_policy" {

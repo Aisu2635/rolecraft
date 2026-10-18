@@ -77,8 +77,8 @@ cat > policy.json <<'ROLECRAFT_EOF'
 }
 ROLECRAFT_EOF
 
-aws iam create-role --role-name "$ROLE_NAME" --assume-role-policy-document file://trust.json --description 'Created with RoleCraft' >/dev/null
-aws iam put-role-policy --role-name "$ROLE_NAME" --policy-name "${ROLE_NAME}-inline" --policy-document file://policy.json
+aws iam create-role --role-name="$ROLE_NAME" --assume-role-policy-document file://trust.json --description 'Created with RoleCraft' >/dev/null
+aws iam put-role-policy --role-name="$ROLE_NAME" --policy-name="${ROLE_NAME}-inline" --policy-document file://policy.json
 
 echo "Created role $ROLE_NAME."
 echo "Added inline policy ${ROLE_NAME}-inline."

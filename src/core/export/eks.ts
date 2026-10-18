@@ -9,6 +9,18 @@ export const EKS_COMMENTS: readonly string[] = [
   "# Change AmazonEKSViewPolicy to AmazonEKSEditPolicy or AmazonEKSClusterAdminPolicy if more access is needed.",
 ];
 
+/**
+ * EKS can reject a just-created IAM principal for several seconds even after `iam wait role-exists`, so the
+ * scripts retry creating the access entry this many times, this many seconds apart.
+ */
+export const EKS_RETRY = { attempts: 6, seconds: 10 } as const;
+export const EKS_RETRY_MESSAGE = `EKS can reject a new IAM principal for a short while; retrying in ${EKS_RETRY.seconds} seconds`;
+export const EKS_RETRY_FAILED = `EKS still rejects the access entry after ${EKS_RETRY.attempts} attempts (see the error above)`;
+
+/** Shown when the scripts need a region for EKS and none is configured. */
+export const NO_REGION_MESSAGE =
+  "No AWS region configured: set AWS_REGION to your EKS cluster's region (or run aws configure) and run this again.";
+
 /** Emitted instead of access entries when the policy is attached to an IAM group. */
 export const EKS_GROUP_COMMENT =
   "# kubectl access: EKS access entries can't target IAM groups. Ask the cluster admin to add an access entry for each user, or use a role instead.";

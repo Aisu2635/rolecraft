@@ -80,7 +80,7 @@ resource "aws_iam_role_policy_attachment" "ec2_ops_policy" {
   policy_arn = aws_iam_policy.ec2_ops_policy.arn
 }
 
-resource "aws_iam_role_policy_attachment" "ec2_ops_managed_1" {
+resource "aws_iam_role_policy_attachment" "ec2_ops_managed_amazonssmmanagedinstancecore_42de79a6" {
   role       = aws_iam_role.ec2_ops.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }

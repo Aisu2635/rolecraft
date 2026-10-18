@@ -1,6 +1,10 @@
-import { EKS_COMMENTS, EKS_GROUP_COMMENT, EKS_VIEW_POLICY, eksClusters } from "./eks";
+import { EKS_COMMENTS, EKS_GROUP_COMMENT, EKS_RETRY, EKS_RETRY_FAILED, EKS_RETRY_MESSAGE, EKS_VIEW_POLICY, NO_REGION_MESSAGE, eksClusters } from "./eks";
 import { stringifyPolicy, type ExportFile } from "./json";
-import { psQuote, type ExportInput } from "./types";
+import { accountMismatch, githubAccount, psQuote, type ExportInput } from "./types";
+
+// Every flag whose value comes from a name is one token "--flag=$Var" (or '--flag=literal'): IAM names may
+// start with "-", which the AWS CLI's argument parser would read as an option if the value were a separate
+// argument. A quoted token reaches aws.exe as one argument in Windows PowerShell 5.1 and PowerShell 7.
 
 const check = (step: string, indent = ""): string => `${indent}if ($LASTEXITCODE -ne 0) { throw "aws failed: ${step}" }`;
 
@@ -31,18 +35,52 @@ function jsonFile(file: string, body: string): string[] {
   return [`[System.IO.File]::WriteAllText((Join-Path $PWD.ProviderPath '${file}'), @'`, `${asciiJson(body)}'@)`];
 }
 
+/** Checks that run before anything is created: credentials' account (GitHub trust) and a region for EKS. */
+function preflight(input: ExportInput, eksEntries: boolean): string[] {
+  const { model } = input;
+  const out: string[] = [];
+  const account = githubAccount(model);
+  if (account && input.result.trust) {
+    out.push(
+      `# Stop before creating anything if these credentials aren't for account ${account} (the trust policy's account).`,
+      ...aws("get-caller-identity", "$CallerAccount = aws sts get-caller-identity --query Account --output text"),
+      `if ($CallerAccount -ne '${account}') { throw "${accountMismatch(account, "$CallerAccount")}" }`,
+      "",
+    );
+  }
+  if (eksEntries && !model.region) {
+    out.push(
+      "# The EKS steps need a region: stop before creating anything if none is configured.",
+      "if (-not $env:AWS_REGION -and -not $env:AWS_DEFAULT_REGION) {",
+      // Exit code 1 just means "not set": the output is what's checked.
+      "  $ConfiguredRegion = aws configure get region",
+      `  if (-not $ConfiguredRegion) { throw "${NO_REGION_MESSAGE}" }`,
+      "}",
+      "",
+    );
+  }
+  return out;
+}
+
 function eksSteps(clusters: string[], arnVar: string, regionName: string | undefined): string[] {
   const region = regionName ? ` --region ${psQuote(regionName)}` : "";
-  return clusters.flatMap((c) => [
-    ...aws(
-      "create-access-entry",
-      `aws eks create-access-entry --cluster-name ${psQuote(c)} --principal-arn "$${arnVar}"${region} | Out-Null`,
-    ),
-    ...aws(
-      "associate-access-policy",
-      `aws eks associate-access-policy --cluster-name ${psQuote(c)} --principal-arn "$${arnVar}" --policy-arn ${EKS_VIEW_POLICY} --access-scope type=cluster${region} | Out-Null`,
-    ),
-  ]);
+  const { attempts, seconds } = EKS_RETRY;
+  return clusters.flatMap((c) => {
+    const cluster = `${psQuote(`--cluster-name=${c}`)} "--principal-arn=$${arnVar}"`;
+    return [
+      "for ($Attempt = 1; ; $Attempt++) {",
+      `  aws eks create-access-entry ${cluster}${region} --no-cli-pager | Out-Null`,
+      "  if ($LASTEXITCODE -eq 0) { break }",
+      `  if ($Attempt -ge ${attempts}) { throw "aws failed: create-access-entry. ${EKS_RETRY_FAILED}." }`,
+      `  Write-Output "${EKS_RETRY_MESSAGE} ($Attempt/${attempts})."`,
+      `  Start-Sleep -Seconds ${seconds}`,
+      "}",
+      ...aws(
+        "associate-access-policy",
+        `aws eks associate-access-policy ${cluster} --policy-arn ${EKS_VIEW_POLICY} --access-scope type=cluster${region} | Out-Null`,
+      ),
+    ];
+  });
 }
 
 /** PowerShell script (5.1 and 7) that creates the role, or attaches the policy to a group/user, with the AWS CLI. */
@@ -64,24 +102,25 @@ export function exportCliPowerShell(input: ExportInput): ExportFile {
     // $RoleName only names the policy; an unused variable is a PSScriptAnalyzer warning.
     if (result.policy) add(`$RoleName = ${psQuote(model.name)}`);
     add(`$PrincipalName = ${psQuote(trust.name)}`, "");
+    add(...preflight(input, kind === "user" && eksClusters(model.grants).length > 0));
     if (result.policy) add("# Permissions policy", ...jsonFile("policy.json", stringifyPolicy(result.policy)), "");
     if (result.policy) {
       if (inline) {
         add(
           ...aws(
             `put-${kind}-policy`,
-            `aws iam put-${kind}-policy --${kind}-name $PrincipalName --policy-name "\${RoleName}-inline" --policy-document file://policy.json`,
+            `aws iam put-${kind}-policy "--${kind}-name=$PrincipalName" "--policy-name=\${RoleName}-inline" --policy-document file://policy.json`,
           ),
         );
       } else {
         add(
           ...aws(
             "create-policy",
-            '$PolicyArn = aws iam create-policy --policy-name "${RoleName}-policy" --policy-document file://policy.json --query Policy.Arn --output text',
+            '$PolicyArn = aws iam create-policy "--policy-name=${RoleName}-policy" --policy-document file://policy.json --query Policy.Arn --output text',
           ),
           ...aws(
             `attach-${kind}-policy`,
-            `aws iam attach-${kind}-policy --${kind}-name $PrincipalName --policy-arn $PolicyArn`,
+            `aws iam attach-${kind}-policy "--${kind}-name=$PrincipalName" "--policy-arn=$PolicyArn"`,
           ),
         );
       }
@@ -90,7 +129,7 @@ export function exportCliPowerShell(input: ExportInput): ExportFile {
       add(
         ...aws(
           `attach-${kind}-policy`,
-          `aws iam attach-${kind}-policy --${kind}-name $PrincipalName --policy-arn ${psQuote(arn)}`,
+          `aws iam attach-${kind}-policy "--${kind}-name=$PrincipalName" --policy-arn ${psQuote(arn)}`,
         ),
       );
     }
@@ -100,7 +139,7 @@ export function exportCliPowerShell(input: ExportInput): ExportFile {
         add(
           "",
           ...EKS_COMMENTS,
-          ...aws("get-user", "$PrincipalArn = aws iam get-user --user-name $PrincipalName --query User.Arn --output text"),
+          ...aws("get-user", '$PrincipalArn = aws iam get-user "--user-name=$PrincipalName" --query User.Arn --output text'),
           ...eksSteps(clusters, "PrincipalArn", model.region),
         );
       } else {
@@ -124,6 +163,7 @@ export function exportCliPowerShell(input: ExportInput): ExportFile {
   }
 
   add(`$RoleName = ${psQuote(model.name)}`, "");
+  add(...preflight(input, eksClusters(model.grants).length > 0));
   add("# Trust policy: who can assume the role", ...jsonFile("trust.json", stringifyPolicy(result.trust)), "");
   if (result.policy) add("# Permissions policy", ...jsonFile("policy.json", stringifyPolicy(result.policy)), "");
 
@@ -133,7 +173,7 @@ export function exportCliPowerShell(input: ExportInput): ExportFile {
   add(
     ...aws(
       "create-role",
-      "aws iam create-role --role-name $RoleName --assume-role-policy-document file://trust.json --description 'Created with RoleCraft' | Out-Null",
+      "aws iam create-role \"--role-name=$RoleName\" --assume-role-policy-document file://trust.json --description 'Created with RoleCraft' | Out-Null",
     ),
   );
   if (result.policy) {
@@ -141,31 +181,31 @@ export function exportCliPowerShell(input: ExportInput): ExportFile {
       add(
         ...aws(
           "put-role-policy",
-          'aws iam put-role-policy --role-name $RoleName --policy-name "${RoleName}-inline" --policy-document file://policy.json',
+          'aws iam put-role-policy "--role-name=$RoleName" "--policy-name=${RoleName}-inline" --policy-document file://policy.json',
         ),
       );
     } else {
       add(
         ...aws(
           "create-policy",
-          '$PolicyArn = aws iam create-policy --policy-name "${RoleName}-policy" --policy-document file://policy.json --query Policy.Arn --output text',
+          '$PolicyArn = aws iam create-policy "--policy-name=${RoleName}-policy" --policy-document file://policy.json --query Policy.Arn --output text',
         ),
-        ...aws("attach-role-policy", "aws iam attach-role-policy --role-name $RoleName --policy-arn $PolicyArn"),
+        ...aws("attach-role-policy", 'aws iam attach-role-policy "--role-name=$RoleName" "--policy-arn=$PolicyArn"'),
       );
     }
   }
   for (const arn of model.managedPolicyArns) {
-    add(...aws("attach-role-policy", `aws iam attach-role-policy --role-name $RoleName --policy-arn ${psQuote(arn)}`));
+    add(...aws("attach-role-policy", `aws iam attach-role-policy "--role-name=$RoleName" --policy-arn ${psQuote(arn)}`));
   }
   const ec2 = trust.kind === "service" && trust.service === "ec2";
   if (ec2) {
     add(
       "",
       "# EC2 instances use roles through an instance profile.",
-      ...aws("create-instance-profile", "aws iam create-instance-profile --instance-profile-name $RoleName | Out-Null"),
+      ...aws("create-instance-profile", 'aws iam create-instance-profile "--instance-profile-name=$RoleName" | Out-Null'),
       ...aws(
         "add-role-to-instance-profile",
-        "aws iam add-role-to-instance-profile --instance-profile-name $RoleName --role-name $RoleName",
+        'aws iam add-role-to-instance-profile "--instance-profile-name=$RoleName" "--role-name=$RoleName"',
       ),
     );
   }
@@ -175,8 +215,8 @@ export function exportCliPowerShell(input: ExportInput): ExportFile {
     add(
       "",
       ...EKS_COMMENTS,
-      ...aws("wait role-exists", "aws iam wait role-exists --role-name $RoleName"),
-      ...aws("get-role", "$RoleArn = aws iam get-role --role-name $RoleName --query Role.Arn --output text"),
+      ...aws("wait role-exists", 'aws iam wait role-exists "--role-name=$RoleName"'),
+      ...aws("get-role", '$RoleArn = aws iam get-role "--role-name=$RoleName" --query Role.Arn --output text'),
       ...eksSteps(clusters, "RoleArn", model.region),
     );
   }

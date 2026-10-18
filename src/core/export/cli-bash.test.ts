@@ -65,10 +65,10 @@ describe("exportCliBash", () => {
   it("eks access entries; region only when set", () => {
     const input = make("eks-kubectl");
     const c = exportCliBash(input).content;
-    expect(c).toContain("aws eks create-access-entry --cluster-name 'prod' --principal-arn \"$ROLE_ARN\" >/dev/null\n");
+    expect(c).toContain("  if aws eks create-access-entry --cluster-name='prod' --principal-arn=\"$ROLE_ARN\" >/dev/null; then break; fi\n");
     expect(c).toContain("AmazonEKSViewPolicy --access-scope type=cluster >/dev/null\n");
     const r = exportCliBash({ ...input, model: { ...input.model, region: "eu-west-1" } }).content;
-    expect(r).toContain("--cluster-name 'prod' --principal-arn \"$ROLE_ARN\" --region 'eu-west-1' >/dev/null");
+    expect(r).toContain("--cluster-name='prod' --principal-arn=\"$ROLE_ARN\" --region 'eu-west-1' >/dev/null");
   });
   it("eks under group trust emits a comment, no aws eks calls", () => {
     const input = make("s3-group");
@@ -114,12 +114,12 @@ describe("exportCliBash", () => {
       managedPolicyArns: ["arn:aws:iam::aws:policy/ReadOnlyAccess"],
     };
     const inline = exportCliBash({ ...input, model: { ...base, policyMode: "inline" } }).content;
-    expect(inline).toContain('put-user-policy --user-name "$PRINCIPAL_NAME"');
+    expect(inline).toContain('put-user-policy --user-name="$PRINCIPAL_NAME"');
     expect(inline).toContain(
-      "attach-user-policy --user-name \"$PRINCIPAL_NAME\" --policy-arn 'arn:aws:iam::aws:policy/ReadOnlyAccess'",
+      "attach-user-policy --user-name=\"$PRINCIPAL_NAME\" --policy-arn 'arn:aws:iam::aws:policy/ReadOnlyAccess'",
     );
     expect(exportCliBash({ ...input, model: base }).content).toContain(
-      'attach-user-policy --user-name "$PRINCIPAL_NAME" --policy-arn "$POLICY_ARN"',
+      'attach-user-policy --user-name="$PRINCIPAL_NAME" --policy-arn="$POLICY_ARN"',
     );
   });
   it("managed ARNs only (no policy)", () => {
@@ -144,12 +144,12 @@ describe("exportCliBash", () => {
   it("reliability: pager, role wait, quiet output, auth mode note", () => {
     const c = exportCliBash(make("eks-kubectl")).content;
     expect(c.startsWith('#!/usr/bin/env bash\nset -euo pipefail\nexport AWS_PAGER=""\n')).toBe(true);
-    expect(c).toContain('aws iam wait role-exists --role-name "$ROLE_NAME"\n');
+    expect(c).toContain('aws iam wait role-exists --role-name="$ROLE_NAME"\n');
     expect(c.indexOf("wait role-exists")).toBeLessThan(c.indexOf("create-access-entry"));
     expect(c).toContain("authentication mode must be API or API_AND_CONFIG_MAP");
     for (const cmd of ["iam create-role", "iam create-instance-profile", "eks create-access-entry", "eks associate-access-policy"]) {
-      const line = c.split("\n").find((l) => l.startsWith(`aws ${cmd}`));
-      expect(line?.endsWith(" >/dev/null")).toBe(true);
+      const line = c.split("\n").find((l) => l.replace(/^\s*if /, "").startsWith(`aws ${cmd}`));
+      expect(line?.replace(/; then break; fi$/, "").endsWith(" >/dev/null")).toBe(true);
     }
   });
   it("eks for principal user looks up the user's ARN", () => {
@@ -171,12 +171,12 @@ describe("exportCliBash", () => {
     const c = exportCliBash({ ...input, model }).content;
     expect(c).toContain(String.raw`PRINCIPAL_NAME='o'\''brien'`);
     expect(c).toContain(
-      'PRINCIPAL_ARN=$(aws iam get-user --user-name "$PRINCIPAL_NAME" --query User.Arn --output text)\n',
+      'PRINCIPAL_ARN=$(aws iam get-user --user-name="$PRINCIPAL_NAME" --query User.Arn --output text)\n',
     );
     expect(c).not.toContain("get-caller-identity");
     expect(c).not.toContain(":user/");
     expect(c).toContain(
-      `aws eks create-access-entry --cluster-name 'prod' --principal-arn "$PRINCIPAL_ARN" --region 'eu-west-1' >/dev/null`,
+      `aws eks create-access-entry --cluster-name='prod' --principal-arn="$PRINCIPAL_ARN" --region 'eu-west-1' >/dev/null`,
     );
     expect(c).toContain("associate-access-policy");
     expect(c).not.toContain("wait role-exists");

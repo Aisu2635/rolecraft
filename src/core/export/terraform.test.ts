@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { REFERENCE_CASES } from "./__fixtures__/cases";
 import { shortHash } from "./eks";
 import { stringifyPolicy } from "./json";
-import { exportTerraform, tfNeedsRegion } from "./terraform";
+import { exportTerraform, managedLabel, tfNeedsRegion } from "./terraform";
 import type { ExportInput } from "./types";
 
 const names = Object.keys(REFERENCE_CASES);
@@ -68,7 +68,7 @@ describe("exportTerraform", () => {
   it("role: managed policy, inline, managed ARNs, instance profile, outputs", () => {
     const ec2 = exportTerraform(make("ec2-ssm")).content;
     expect(ec2).toContain('resource "aws_iam_instance_profile" "ec2_ops"');
-    expect(ec2).toContain('resource "aws_iam_role_policy_attachment" "ec2_ops_managed_1"');
+    expect(ec2).toContain(`resource "aws_iam_role_policy_attachment" "${managedLabel("ec2_ops", "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore")}"`);
     expect(ec2).toContain('policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"');
     expect(ec2).toContain('resource "aws_iam_policy" "ec2_ops_policy"');
     expect(ec2).toContain('resource "aws_iam_role_policy_attachment" "ec2_ops_policy"');
@@ -152,7 +152,9 @@ describe("exportTerraform", () => {
     };
     const c = exportTerraform({ ...input, model }).content;
     expect(c).toContain('resource "aws_iam_user_policy_attachment" "analytics_reader_policy"');
-    expect(c).toContain('resource "aws_iam_user_policy_attachment" "analytics_reader_managed_1"');
+    expect(c).toContain(
+      `resource "aws_iam_user_policy_attachment" "${managedLabel("analytics_reader", "arn:aws:iam::aws:policy/ReadOnlyAccess")}"`,
+    );
     expect(c).toContain('user       = "bob"');
     expect(c).toContain('data "aws_iam_user" "bob" {\n  user_name = "bob"\n}');
     expect(c).toContain("principal_arn = data.aws_iam_user.bob.arn");
@@ -205,7 +207,7 @@ describe("exportTerraform", () => {
     const input = make("ec2-ssm");
     const c = exportTerraform({ ...input, result: { ...input.result, policy: null } }).content;
     expect(c).not.toContain("aws_iam_policy");
-    expect(c).toContain("ec2_ops_managed_1");
+    expect(c).toContain(managedLabel("ec2_ops", "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"));
     const g = make("s3-group");
     const gc = exportTerraform({ ...g, result: { ...g.result, policy: null } }).content;
     expect(gc).not.toContain("aws_iam_policy");

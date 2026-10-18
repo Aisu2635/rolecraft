@@ -59,14 +59,14 @@ cat > policy.json <<'ROLECRAFT_EOF'
 }
 ROLECRAFT_EOF
 
-aws iam create-role --role-name "$ROLE_NAME" --assume-role-policy-document file://trust.json --description 'Created with RoleCraft' >/dev/null
-POLICY_ARN=$(aws iam create-policy --policy-name "${ROLE_NAME}-policy" --policy-document file://policy.json --query Policy.Arn --output text)
-aws iam attach-role-policy --role-name "$ROLE_NAME" --policy-arn "$POLICY_ARN"
-aws iam attach-role-policy --role-name "$ROLE_NAME" --policy-arn 'arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore'
+aws iam create-role --role-name="$ROLE_NAME" --assume-role-policy-document file://trust.json --description 'Created with RoleCraft' >/dev/null
+POLICY_ARN=$(aws iam create-policy --policy-name="${ROLE_NAME}-policy" --policy-document file://policy.json --query Policy.Arn --output text)
+aws iam attach-role-policy --role-name="$ROLE_NAME" --policy-arn="$POLICY_ARN"
+aws iam attach-role-policy --role-name="$ROLE_NAME" --policy-arn 'arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore'
 
 # EC2 instances use roles through an instance profile.
-aws iam create-instance-profile --instance-profile-name "$ROLE_NAME" >/dev/null
-aws iam add-role-to-instance-profile --instance-profile-name "$ROLE_NAME" --role-name "$ROLE_NAME"
+aws iam create-instance-profile --instance-profile-name="$ROLE_NAME" >/dev/null
+aws iam add-role-to-instance-profile --instance-profile-name="$ROLE_NAME" --role-name="$ROLE_NAME"
 
 echo "Created role $ROLE_NAME."
 echo "Created instance profile $ROLE_NAME."

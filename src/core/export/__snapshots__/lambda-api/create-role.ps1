@@ -75,9 +75,9 @@ $RoleName = 'lambda-api'
 }
 '@)
 
-aws iam create-role --role-name $RoleName --assume-role-policy-document file://trust.json --description 'Created with RoleCraft' --no-cli-pager | Out-Null
+aws iam create-role "--role-name=$RoleName" --assume-role-policy-document file://trust.json --description 'Created with RoleCraft' --no-cli-pager | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "aws failed: create-role" }
-aws iam put-role-policy --role-name $RoleName --policy-name "${RoleName}-inline" --policy-document file://policy.json --no-cli-pager
+aws iam put-role-policy "--role-name=$RoleName" "--policy-name=${RoleName}-inline" --policy-document file://policy.json --no-cli-pager
 if ($LASTEXITCODE -ne 0) { throw "aws failed: put-role-policy" }
 
 Write-Output "Created role $RoleName."

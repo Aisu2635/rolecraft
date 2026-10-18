@@ -448,8 +448,8 @@ describe("exportCloudFormation", () => {
     );
     expect(i).toBeGreaterThan(-1);
     expect(h.slice(i + 1, i + 3)).toStrictEqual([
-      "# aws iam attach-group-policy --group-name 'analytics-team' --policy-arn 'arn:aws:iam::aws:policy/ReadOnlyAccess'",
-      String.raw`# aws iam attach-group-policy --group-name 'analytics-team' --policy-arn 'arn:aws:iam::aws:policy/it'\''s'`,
+      "# aws iam attach-group-policy --group-name='analytics-team' --policy-arn 'arn:aws:iam::aws:policy/ReadOnlyAccess'",
+      String.raw`# aws iam attach-group-policy --group-name='analytics-team' --policy-arn 'arn:aws:iam::aws:policy/it'\''s'`,
     ]);
     expect(parse(c).Resources.Policy).toBeDefined();
     expect(c).not.toContain("ManagedPolicyArns");
@@ -466,7 +466,7 @@ describe("exportCloudFormation", () => {
     expect(isCommentOnly(c)).toBe(true);
     expect(c).toContain("# CloudFormation can't do this on its own; use the CLI script or Terraform instead.\n");
     expect(c).toContain(
-      "# aws iam attach-user-policy --user-name 'bob' --policy-arn 'arn:aws:iam::aws:policy/ReadOnlyAccess'\n",
+      "# aws iam attach-user-policy --user-name='bob' --policy-arn 'arn:aws:iam::aws:policy/ReadOnlyAccess'\n",
     );
     expect(c).not.toContain("Deploy:");
     expect(c).not.toContain("Run this after deploying");
@@ -479,7 +479,7 @@ describe("exportCloudFormation", () => {
     });
     expect(isCommentOnly(g)).toBe(true);
     expect(g).not.toMatch(/[ \t]$/m);
-    expect(g).toContain("# aws iam attach-group-policy --group-name 'bob'");
+    expect(g).toContain("# aws iam attach-group-policy --group-name='bob'");
     expect(g).toContain("\n\n# kubectl access: EKS access entries can't target IAM groups.");
   });
 });

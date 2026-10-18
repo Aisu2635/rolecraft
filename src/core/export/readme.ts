@@ -1,10 +1,10 @@
 import { exportCliBash } from "./cli-bash";
 import { exportCliPowerShell } from "./cli-ps";
 import { cfnCanDeploy, cfnDeleteCommand, cfnDeployCommand } from "./cloudformation";
-import { EKS_GROUP_COMMENT, eksClusters } from "./eks";
+import { EKS_GROUP_COMMENT, EKS_RETRY, eksClusters } from "./eks";
 import type { ExportFile } from "./json";
 import { TF_AWS_PROVIDER_VERSION, tfNeedsRegion } from "./terraform";
-import { shQuote, tfLabel, type ExportInput } from "./types";
+import { githubAccount, shQuote, tfLabel, type ExportInput } from "./types";
 
 /**
  * Model-derived text as literal Markdown on one trimmed line: inline syntax characters are backslash-escaped,
@@ -28,6 +28,13 @@ const code = (s: string): string => (s.includes("`") ? escapeMarkdown(s) : `\`${
 
 const joinAnd = (xs: string[]): string =>
   xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1] as string}`;
+
+/**
+ * Minimum AWS CLI v2 version: 2.15.3 added EKS access entries (botocore 1.34.3), 2.15.38 made
+ * CreateOpenIDConnectProvider's ThumbprintList optional (botocore 1.34.83); older CLIs reject the scripts'
+ * commands before calling AWS.
+ */
+export const MIN_AWS_CLI = "2.15.38";
 
 const CREATE_ONCE_ROLE =
   "These scripts create resources once; re-running fails with EntityAlreadyExists. Delete the role first or use Terraform/CloudFormation for repeatable deploys.";
@@ -99,7 +106,11 @@ function permissions(s: Shape): Record<"cli" | "terraform" | "cfn" | "tfOidc" | 
       cfn.push(...EKS_ACTIONS, "eks:TagResource");
     }
   } else {
-    if (s.github) cli.push("iam:ListOpenIDConnectProviders", "iam:CreateOpenIDConnectProvider");
+    // The scripts and Terraform check the credentials' account against the GitHub trust policy's first.
+    if (s.github) {
+      cli.push("sts:GetCallerIdentity", "iam:ListOpenIDConnectProviders", "iam:CreateOpenIDConnectProvider");
+      tf.push("sts:GetCallerIdentity");
+    }
     cli.push("iam:CreateRole");
     const roleReads = ["iam:GetRole", "iam:ListRolePolicies", "iam:ListAttachedRolePolicies"];
     tf.push("iam:CreateRole", ...roleReads);
@@ -175,7 +186,7 @@ function cleanupCommands(model: ExportInput["model"], s: Shape): string[] | null
   if (s.principal && !s.managed && !s.eksEntries) return null;
   const region = model.region ? ` --region ${shQuote(model.region)}` : "";
   const entries = (arnVar: string): string[] =>
-    s.clusters.map((c) => `aws eks delete-access-entry --cluster-name ${shQuote(c)} --principal-arn "$${arnVar}"${region}`);
+    s.clusters.map((c) => `aws eks delete-access-entry --cluster-name=${shQuote(c)} --principal-arn="$${arnVar}"${region}`);
   const vars: string[] = [];
   const steps: string[] = [];
   if (s.managed || !s.principal) vars.push(`ROLE_NAME=${shQuote(model.name)}`);
@@ -190,36 +201,36 @@ function cleanupCommands(model: ExportInput["model"], s: Shape): string[] | null
     const trust = model.trust as Extract<ExportInput["model"]["trust"], { kind: "principal" }>;
     vars.push(`PRINCIPAL_NAME=${shQuote(trust.name)}`);
     if (s.eksEntries) {
-      vars.push('PRINCIPAL_ARN=$(aws iam get-user --user-name "$PRINCIPAL_NAME" --query User.Arn --output text)');
+      vars.push('PRINCIPAL_ARN=$(aws iam get-user --user-name="$PRINCIPAL_NAME" --query User.Arn --output text)');
       steps.push(...entries("PRINCIPAL_ARN"));
     }
     if (s.managed) {
       steps.push(
-        `aws iam detach-${k}-policy --${k}-name "$PRINCIPAL_NAME" --policy-arn "$POLICY_ARN"`,
-        'aws iam delete-policy --policy-arn "$POLICY_ARN"',
+        `aws iam detach-${k}-policy --${k}-name="$PRINCIPAL_NAME" --policy-arn="$POLICY_ARN"`,
+        'aws iam delete-policy --policy-arn="$POLICY_ARN"',
       );
     }
     return [...vars, ...steps];
   }
   if (s.eksEntries) {
-    vars.push('ROLE_ARN=$(aws iam get-role --role-name "$ROLE_NAME" --query Role.Arn --output text)');
+    vars.push('ROLE_ARN=$(aws iam get-role --role-name="$ROLE_NAME" --query Role.Arn --output text)');
     steps.push(...entries("ROLE_ARN"));
   }
   if (s.ec2) {
     steps.push(
-      'aws iam remove-role-from-instance-profile --instance-profile-name "$ROLE_NAME" --role-name "$ROLE_NAME"',
-      'aws iam delete-instance-profile --instance-profile-name "$ROLE_NAME"',
+      'aws iam remove-role-from-instance-profile --instance-profile-name="$ROLE_NAME" --role-name="$ROLE_NAME"',
+      'aws iam delete-instance-profile --instance-profile-name="$ROLE_NAME"',
     );
   }
   if (s.managed) {
     steps.push(
-      'aws iam detach-role-policy --role-name "$ROLE_NAME" --policy-arn "$POLICY_ARN"',
-      'aws iam delete-policy --policy-arn "$POLICY_ARN"',
+      'aws iam detach-role-policy --role-name="$ROLE_NAME" --policy-arn="$POLICY_ARN"',
+      'aws iam delete-policy --policy-arn="$POLICY_ARN"',
     );
   }
-  if (s.inline) steps.push('aws iam delete-role-policy --role-name "$ROLE_NAME" --policy-name "${ROLE_NAME}-inline"');
-  for (const arn of s.arns) steps.push(`aws iam detach-role-policy --role-name "$ROLE_NAME" --policy-arn ${shQuote(arn)}`);
-  steps.push('aws iam delete-role --role-name "$ROLE_NAME"');
+  if (s.inline) steps.push('aws iam delete-role-policy --role-name="$ROLE_NAME" --policy-name="${ROLE_NAME}-inline"');
+  for (const arn of s.arns) steps.push(`aws iam detach-role-policy --role-name="$ROLE_NAME" --policy-arn ${shQuote(arn)}`);
+  steps.push('aws iam delete-role --role-name="$ROLE_NAME"');
   return [...vars, ...steps];
 }
 
@@ -237,9 +248,16 @@ function howToApply(input: ExportInput, s: Shape): string[] {
     out.push(`\`\`\`${lang}`, command, "```", "");
   };
 
-  p(`Use **one** of the ${s.cfn ? "four" : "three"} ways below: each creates the same resources.`);
+  const ways = `Use **one** of the ${s.cfn ? "four" : "three"} ways below`;
+  const except = [
+    ...(s.github ? ["only the AWS CLI scripts create the GitHub OIDC provider (see below)"] : []),
+    ...(s.cfn && s.principal && s.arns.length > 0
+      ? [`CloudFormation doesn't attach the existing managed policies (run the commented commands in \`template.yaml\`)`]
+      : []),
+  ];
+  p(except.length > 0 ? `${ways}. They create the same resources, except that ${joinAnd(except)}.` : `${ways}: each creates the same resources.`);
   p(
-    "**Prerequisites:** AWS CLI v2 configured with credentials for the target account (`aws sts get-caller-identity` shows which one).",
+    `**Prerequisites:** AWS CLI v2 (${MIN_AWS_CLI} or later; \`aws --version\` shows it) configured with credentials for the target account (\`aws sts get-caller-identity\` shows which one).`,
     `Terraform also needs Terraform ≥ 1.9; \`terraform init\` installs the AWS provider (\`${TF_AWS_PROVIDER_VERSION}\`).`,
   );
   if (s.eksEntries) {
@@ -249,7 +267,8 @@ function howToApply(input: ExportInput, s: Shape): string[] {
       `**EKS:** ${subject} use the authentication mode API or API_AND_CONFIG_MAP (EKS console → cluster → Access), or creating the access entry fails.`,
       model.region
         ? `The access entries are created in ${code(model.region)}.`
-        : "The scripts create the access entries in your AWS CLI default region; set `AWS_REGION` to the cluster's region first if it differs.",
+        : "The scripts create the access entries in your AWS CLI default region; set `AWS_REGION` to the cluster's region first if it differs. They stop before creating anything if no region is configured.",
+      `EKS can reject a new IAM ${s.principal ? "user" : "role"} for a few seconds, so the scripts retry creating the access entry (${EKS_RETRY.attempts} attempts, ${EKS_RETRY.seconds} seconds apart).`,
     );
   } else if (s.clusters.length > 0) {
     p(`**kubectl access:** ${EKS_GROUP_COMMENT.replace("# kubectl access: ", "")}`);
@@ -259,13 +278,23 @@ function howToApply(input: ExportInput, s: Shape): string[] {
       "**GitHub OIDC provider:** The scripts create the GitHub OIDC provider if your account doesn't have it; Terraform and CloudFormation only create it if you uncomment or add it (see below).",
     );
   }
+  const account = githubAccount(model);
+  if (account) {
+    p(
+      `**Account:** The trust policy trusts GitHub through account ${code(account)}'s OIDC provider, so apply this with credentials for that account.`,
+      "The scripts and Terraform stop before creating anything if the credentials are for another account.",
+    );
+  }
 
   const written = [...(result.trust ? ["`trust.json`"] : []), ...(result.policy ? ["`policy.json`"] : [])];
   const writes = written.length > 0 ? ` It writes ${joinAnd(written)} there first.` : "";
 
   out.push("### AWS CLI — bash", "");
   block("sh", `bash ${bash}`);
-  p(`Run it in the folder that contains \`${bash}\` (Linux, macOS, WSL or AWS CloudShell).${writes}`);
+  p(
+    `Run it in the folder that contains \`${bash}\` (Linux, macOS, WSL or AWS CloudShell).${writes}`,
+    `Keep its LF line endings: re-saving \`${bash}\` with CRLF line endings (as some Windows editors do) breaks it; on Windows, run it from WSL, Git Bash or AWS CloudShell.`,
+  );
 
   out.push("### AWS CLI — PowerShell", "");
   block("powershell", `pwsh -File .\\${ps}`);
@@ -282,9 +311,10 @@ function howToApply(input: ExportInput, s: Shape): string[] {
   } else {
     p(
       rerunNote(s),
-      `To start over, run these bash commands in order (IAM refuses to delete ${s.principal ? "a policy that is still attached" : "a role that still has policies or an instance profile, or a policy that is still attached"}, with DeleteConflict):`,
+      `To start over, run these bash commands in order (AWS CloudShell, WSL or Git Bash work; IAM refuses to delete ${s.principal ? "a policy that is still attached" : "a role that still has policies or an instance profile, or a policy that is still attached"}, with DeleteConflict):`,
     );
     block("sh", cleanup.join("\n"));
+    p(`Commands for resources that weren't created fail with NoSuchEntity${s.eksEntries ? " (ResourceNotFoundException for the EKS access entry)" : ""}; that's fine.`);
     if (s.github) p("The GitHub OIDC provider stays: other roles in the account may use it.");
   }
 
@@ -379,6 +409,12 @@ export function exportReadme(input: ExportInput): ExportFile {
     ...summary.can.map((c) => escapeMarkdown(c.text)),
     ...(summary.can.length === 0 && result.policy ? ["See `policy.json` for the exact permissions."] : []),
     ...model.managedPolicyArns.map((arn) => `Everything the managed policy ${code(arn)} allows.`),
+    ...(s.eksEntries
+      ? s.clusters.map(
+          (c) =>
+            `The EKS access entry gives cluster-wide read-only Kubernetes access (AmazonEKSViewPolicy, all namespaces) on cluster ${escapeMarkdown(c)}.`,
+        )
+      : []),
   ];
   if (can.length === 0) can.push("Nothing yet.");
   lines.push(s.principal ? "## What this policy allows" : "## What this role can do", "", ...can.map((c) => `- ${c}`), "");

@@ -27,19 +27,24 @@ $PrincipalName = 'deploy-bot'
 }
 '@)
 
-$PolicyArn = aws iam create-policy --policy-name "${RoleName}-policy" --policy-document file://policy.json --query Policy.Arn --output text --no-cli-pager
+$PolicyArn = aws iam create-policy "--policy-name=${RoleName}-policy" --policy-document file://policy.json --query Policy.Arn --output text --no-cli-pager
 if ($LASTEXITCODE -ne 0) { throw "aws failed: create-policy" }
-aws iam attach-user-policy --user-name $PrincipalName --policy-arn $PolicyArn --no-cli-pager
+aws iam attach-user-policy "--user-name=$PrincipalName" "--policy-arn=$PolicyArn" --no-cli-pager
 if ($LASTEXITCODE -ne 0) { throw "aws failed: attach-user-policy" }
 
 # Give kubectl access to your EKS cluster(s) through EKS access entries.
 # The cluster's authentication mode must be API or API_AND_CONFIG_MAP for access entries.
 # Change AmazonEKSViewPolicy to AmazonEKSEditPolicy or AmazonEKSClusterAdminPolicy if more access is needed.
-$PrincipalArn = aws iam get-user --user-name $PrincipalName --query User.Arn --output text --no-cli-pager
+$PrincipalArn = aws iam get-user "--user-name=$PrincipalName" --query User.Arn --output text --no-cli-pager
 if ($LASTEXITCODE -ne 0) { throw "aws failed: get-user" }
-aws eks create-access-entry --cluster-name 'prod' --principal-arn "$PrincipalArn" --region 'eu-west-1' --no-cli-pager | Out-Null
-if ($LASTEXITCODE -ne 0) { throw "aws failed: create-access-entry" }
-aws eks associate-access-policy --cluster-name 'prod' --principal-arn "$PrincipalArn" --policy-arn arn:aws:eks::aws:cluster-access-policy/AmazonEKSViewPolicy --access-scope type=cluster --region 'eu-west-1' --no-cli-pager | Out-Null
+for ($Attempt = 1; ; $Attempt++) {
+  aws eks create-access-entry '--cluster-name=prod' "--principal-arn=$PrincipalArn" --region 'eu-west-1' --no-cli-pager | Out-Null
+  if ($LASTEXITCODE -eq 0) { break }
+  if ($Attempt -ge 6) { throw "aws failed: create-access-entry. EKS still rejects the access entry after 6 attempts (see the error above)." }
+  Write-Output "EKS can reject a new IAM principal for a short while; retrying in 10 seconds ($Attempt/6)."
+  Start-Sleep -Seconds 10
+}
+aws eks associate-access-policy '--cluster-name=prod' "--principal-arn=$PrincipalArn" --policy-arn arn:aws:eks::aws:cluster-access-policy/AmazonEKSViewPolicy --access-scope type=cluster --region 'eu-west-1' --no-cli-pager | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "aws failed: associate-access-policy" }
 
 Write-Output "Attached the policy to user $PrincipalName."

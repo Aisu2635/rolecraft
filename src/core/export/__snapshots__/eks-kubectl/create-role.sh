@@ -7,6 +7,12 @@ export AWS_PAGER=""
 
 ROLE_NAME='eks-admin-cli'
 
+# The EKS steps need a region: stop before creating anything if none is configured.
+if [ -z "${AWS_REGION:-}" ] && [ -z "${AWS_DEFAULT_REGION:-}" ] && [ -z "$(aws configure get region || true)" ]; then
+  echo "No AWS region configured: set AWS_REGION to your EKS cluster's region (or run aws configure) and run this again." >&2
+  exit 1
+fi
+
 # Trust policy: who can assume the role
 cat > trust.json <<'ROLECRAFT_EOF'
 {
@@ -44,21 +50,29 @@ cat > policy.json <<'ROLECRAFT_EOF'
 }
 ROLECRAFT_EOF
 
-aws iam create-role --role-name "$ROLE_NAME" --assume-role-policy-document file://trust.json --description 'Created with RoleCraft' >/dev/null
-POLICY_ARN=$(aws iam create-policy --policy-name "${ROLE_NAME}-policy" --policy-document file://policy.json --query Policy.Arn --output text)
-aws iam attach-role-policy --role-name "$ROLE_NAME" --policy-arn "$POLICY_ARN"
+aws iam create-role --role-name="$ROLE_NAME" --assume-role-policy-document file://trust.json --description 'Created with RoleCraft' >/dev/null
+POLICY_ARN=$(aws iam create-policy --policy-name="${ROLE_NAME}-policy" --policy-document file://policy.json --query Policy.Arn --output text)
+aws iam attach-role-policy --role-name="$ROLE_NAME" --policy-arn="$POLICY_ARN"
 
 # EC2 instances use roles through an instance profile.
-aws iam create-instance-profile --instance-profile-name "$ROLE_NAME" >/dev/null
-aws iam add-role-to-instance-profile --instance-profile-name "$ROLE_NAME" --role-name "$ROLE_NAME"
+aws iam create-instance-profile --instance-profile-name="$ROLE_NAME" >/dev/null
+aws iam add-role-to-instance-profile --instance-profile-name="$ROLE_NAME" --role-name="$ROLE_NAME"
 
 # Give kubectl access to your EKS cluster(s) through EKS access entries.
 # The cluster's authentication mode must be API or API_AND_CONFIG_MAP for access entries.
 # Change AmazonEKSViewPolicy to AmazonEKSEditPolicy or AmazonEKSClusterAdminPolicy if more access is needed.
-aws iam wait role-exists --role-name "$ROLE_NAME"
-ROLE_ARN=$(aws iam get-role --role-name "$ROLE_NAME" --query Role.Arn --output text)
-aws eks create-access-entry --cluster-name 'prod' --principal-arn "$ROLE_ARN" >/dev/null
-aws eks associate-access-policy --cluster-name 'prod' --principal-arn "$ROLE_ARN" --policy-arn arn:aws:eks::aws:cluster-access-policy/AmazonEKSViewPolicy --access-scope type=cluster >/dev/null
+aws iam wait role-exists --role-name="$ROLE_NAME"
+ROLE_ARN=$(aws iam get-role --role-name="$ROLE_NAME" --query Role.Arn --output text)
+for attempt in 1 2 3 4 5 6; do
+  if aws eks create-access-entry --cluster-name='prod' --principal-arn="$ROLE_ARN" >/dev/null; then break; fi
+  if [ "$attempt" -eq 6 ]; then
+    echo "EKS still rejects the access entry after 6 attempts (see the error above)." >&2
+    exit 1
+  fi
+  echo "EKS can reject a new IAM principal for a short while; retrying in 10 seconds ($attempt/6)." >&2
+  sleep 10
+done
+aws eks associate-access-policy --cluster-name='prod' --principal-arn="$ROLE_ARN" --policy-arn arn:aws:eks::aws:cluster-access-policy/AmazonEKSViewPolicy --access-scope type=cluster >/dev/null
 
 echo "Created role $ROLE_NAME."
 echo "Created instance profile $ROLE_NAME."

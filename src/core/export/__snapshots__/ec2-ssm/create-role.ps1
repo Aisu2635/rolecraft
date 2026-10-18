@@ -57,19 +57,19 @@ $RoleName = 'ec2-ops'
 }
 '@)
 
-aws iam create-role --role-name $RoleName --assume-role-policy-document file://trust.json --description 'Created with RoleCraft' --no-cli-pager | Out-Null
+aws iam create-role "--role-name=$RoleName" --assume-role-policy-document file://trust.json --description 'Created with RoleCraft' --no-cli-pager | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "aws failed: create-role" }
-$PolicyArn = aws iam create-policy --policy-name "${RoleName}-policy" --policy-document file://policy.json --query Policy.Arn --output text --no-cli-pager
+$PolicyArn = aws iam create-policy "--policy-name=${RoleName}-policy" --policy-document file://policy.json --query Policy.Arn --output text --no-cli-pager
 if ($LASTEXITCODE -ne 0) { throw "aws failed: create-policy" }
-aws iam attach-role-policy --role-name $RoleName --policy-arn $PolicyArn --no-cli-pager
+aws iam attach-role-policy "--role-name=$RoleName" "--policy-arn=$PolicyArn" --no-cli-pager
 if ($LASTEXITCODE -ne 0) { throw "aws failed: attach-role-policy" }
-aws iam attach-role-policy --role-name $RoleName --policy-arn 'arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore' --no-cli-pager
+aws iam attach-role-policy "--role-name=$RoleName" --policy-arn 'arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore' --no-cli-pager
 if ($LASTEXITCODE -ne 0) { throw "aws failed: attach-role-policy" }
 
 # EC2 instances use roles through an instance profile.
-aws iam create-instance-profile --instance-profile-name $RoleName --no-cli-pager | Out-Null
+aws iam create-instance-profile "--instance-profile-name=$RoleName" --no-cli-pager | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "aws failed: create-instance-profile" }
-aws iam add-role-to-instance-profile --instance-profile-name $RoleName --role-name $RoleName --no-cli-pager
+aws iam add-role-to-instance-profile "--instance-profile-name=$RoleName" "--role-name=$RoleName" --no-cli-pager
 if ($LASTEXITCODE -ne 0) { throw "aws failed: add-role-to-instance-profile" }
 
 Write-Output "Created role $RoleName."

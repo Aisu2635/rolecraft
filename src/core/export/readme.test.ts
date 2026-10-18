@@ -266,26 +266,26 @@ describe("exportReadme", () => {
       "ROLE_NAME='ec2-ops'",
       "ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)",
       'POLICY_ARN="arn:aws:iam::${ACCOUNT_ID}:policy/${ROLE_NAME}-policy"',
-      'aws iam remove-role-from-instance-profile --instance-profile-name "$ROLE_NAME" --role-name "$ROLE_NAME"',
-      'aws iam delete-instance-profile --instance-profile-name "$ROLE_NAME"',
-      'aws iam detach-role-policy --role-name "$ROLE_NAME" --policy-arn "$POLICY_ARN"',
-      'aws iam delete-policy --policy-arn "$POLICY_ARN"',
-      "aws iam detach-role-policy --role-name \"$ROLE_NAME\" --policy-arn 'arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore'",
-      'aws iam delete-role --role-name "$ROLE_NAME"',
+      'aws iam remove-role-from-instance-profile --instance-profile-name="$ROLE_NAME" --role-name="$ROLE_NAME"',
+      'aws iam delete-instance-profile --instance-profile-name="$ROLE_NAME"',
+      'aws iam detach-role-policy --role-name="$ROLE_NAME" --policy-arn="$POLICY_ARN"',
+      'aws iam delete-policy --policy-arn="$POLICY_ARN"',
+      "aws iam detach-role-policy --role-name=\"$ROLE_NAME\" --policy-arn 'arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore'",
+      'aws iam delete-role --role-name="$ROLE_NAME"',
     ]);
     const lambda = cleanup(readme(make("lambda-api"))) as string;
     inOrder(lambda, [
-      'aws iam delete-role-policy --role-name "$ROLE_NAME" --policy-name "${ROLE_NAME}-inline"',
-      'aws iam delete-role --role-name "$ROLE_NAME"',
+      'aws iam delete-role-policy --role-name="$ROLE_NAME" --policy-name="${ROLE_NAME}-inline"',
+      'aws iam delete-role --role-name="$ROLE_NAME"',
     ]);
     expect(lambda).not.toContain("delete-policy ");
     expect(lambda).not.toContain("ACCOUNT_ID");
     const eks = cleanup(readme(make("eks-kubectl"))) as string;
     inOrder(eks, [
-      'ROLE_ARN=$(aws iam get-role --role-name "$ROLE_NAME" --query Role.Arn --output text)',
-      "aws eks delete-access-entry --cluster-name 'prod' --principal-arn \"$ROLE_ARN\"\n",
+      'ROLE_ARN=$(aws iam get-role --role-name="$ROLE_NAME" --query Role.Arn --output text)',
+      "aws eks delete-access-entry --cluster-name='prod' --principal-arn=\"$ROLE_ARN\"\n",
       'aws iam delete-instance-profile',
-      'aws iam delete-role --role-name "$ROLE_NAME"',
+      'aws iam delete-role --role-name="$ROLE_NAME"',
     ]);
     const gh = readme(make("github-deploy"));
     expect(cleanup(gh)).not.toContain("open-id-connect");
@@ -303,10 +303,10 @@ describe("exportReadme", () => {
     inOrder(c, [
       "ROLE_NAME='deploy-bot-kubectl'",
       "PRINCIPAL_NAME='deploy-bot'",
-      'PRINCIPAL_ARN=$(aws iam get-user --user-name "$PRINCIPAL_NAME" --query User.Arn --output text)',
-      "aws eks delete-access-entry --cluster-name 'prod' --principal-arn \"$PRINCIPAL_ARN\" --region 'eu-west-1'",
-      'aws iam detach-user-policy --user-name "$PRINCIPAL_NAME" --policy-arn "$POLICY_ARN"',
-      'aws iam delete-policy --policy-arn "$POLICY_ARN"',
+      'PRINCIPAL_ARN=$(aws iam get-user --user-name="$PRINCIPAL_NAME" --query User.Arn --output text)',
+      "aws eks delete-access-entry --cluster-name='prod' --principal-arn=\"$PRINCIPAL_ARN\" --region 'eu-west-1'",
+      'aws iam detach-user-policy --user-name="$PRINCIPAL_NAME" --policy-arn="$POLICY_ARN"',
+      'aws iam delete-policy --policy-arn="$POLICY_ARN"',
     ]);
     expect(c).not.toContain("delete-user ");
   });
@@ -315,8 +315,8 @@ describe("exportReadme", () => {
     const c = cleanup(readme(make("s3-group"))) as string;
     inOrder(c, [
       "PRINCIPAL_NAME='analytics-team'",
-      'aws iam detach-group-policy --group-name "$PRINCIPAL_NAME" --policy-arn "$POLICY_ARN"',
-      'aws iam delete-policy --policy-arn "$POLICY_ARN"',
+      'aws iam detach-group-policy --group-name="$PRINCIPAL_NAME" --policy-arn="$POLICY_ARN"',
+      'aws iam delete-policy --policy-arn="$POLICY_ARN"',
     ]);
     expect(c).not.toContain("eks");
   });
@@ -336,7 +336,7 @@ describe("exportReadme", () => {
         }),
       ),
     ) as string;
-    expect(eks).toContain("aws eks delete-access-entry --cluster-name 'prod' --principal-arn \"$PRINCIPAL_ARN\"");
+    expect(eks).toContain("aws eks delete-access-entry --cluster-name='prod' --principal-arn=\"$PRINCIPAL_ARN\"");
     expect(eks).not.toContain("delete-policy");
     expect(eks).not.toContain("delete-user-policy");
   });
@@ -346,7 +346,7 @@ describe("exportReadme", () => {
     input.model = { ...input.model, name: "x'y", grants: [{ ...eksGrant, scope: { type: "module", data: { cluster: "c$(rm)" } } }] };
     const c = cleanup(readme(input)) as string;
     expect(c).toContain("ROLE_NAME='x'\\''y'");
-    expect(c).toContain("--cluster-name 'c$(rm)'");
+    expect(c).toContain("--cluster-name='c$(rm)'");
   });
 
   it("three ways when CloudFormation can't deploy, four otherwise", () => {

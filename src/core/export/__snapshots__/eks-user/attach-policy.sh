@@ -29,14 +29,22 @@ cat > policy.json <<'ROLECRAFT_EOF'
 }
 ROLECRAFT_EOF
 
-POLICY_ARN=$(aws iam create-policy --policy-name "${ROLE_NAME}-policy" --policy-document file://policy.json --query Policy.Arn --output text)
-aws iam attach-user-policy --user-name "$PRINCIPAL_NAME" --policy-arn "$POLICY_ARN"
+POLICY_ARN=$(aws iam create-policy --policy-name="${ROLE_NAME}-policy" --policy-document file://policy.json --query Policy.Arn --output text)
+aws iam attach-user-policy --user-name="$PRINCIPAL_NAME" --policy-arn="$POLICY_ARN"
 
 # Give kubectl access to your EKS cluster(s) through EKS access entries.
 # The cluster's authentication mode must be API or API_AND_CONFIG_MAP for access entries.
 # Change AmazonEKSViewPolicy to AmazonEKSEditPolicy or AmazonEKSClusterAdminPolicy if more access is needed.
-PRINCIPAL_ARN=$(aws iam get-user --user-name "$PRINCIPAL_NAME" --query User.Arn --output text)
-aws eks create-access-entry --cluster-name 'prod' --principal-arn "$PRINCIPAL_ARN" --region 'eu-west-1' >/dev/null
-aws eks associate-access-policy --cluster-name 'prod' --principal-arn "$PRINCIPAL_ARN" --policy-arn arn:aws:eks::aws:cluster-access-policy/AmazonEKSViewPolicy --access-scope type=cluster --region 'eu-west-1' >/dev/null
+PRINCIPAL_ARN=$(aws iam get-user --user-name="$PRINCIPAL_NAME" --query User.Arn --output text)
+for attempt in 1 2 3 4 5 6; do
+  if aws eks create-access-entry --cluster-name='prod' --principal-arn="$PRINCIPAL_ARN" --region 'eu-west-1' >/dev/null; then break; fi
+  if [ "$attempt" -eq 6 ]; then
+    echo "EKS still rejects the access entry after 6 attempts (see the error above)." >&2
+    exit 1
+  fi
+  echo "EKS can reject a new IAM principal for a short while; retrying in 10 seconds ($attempt/6)." >&2
+  sleep 10
+done
+aws eks associate-access-policy --cluster-name='prod' --principal-arn="$PRINCIPAL_ARN" --policy-arn arn:aws:eks::aws:cluster-access-policy/AmazonEKSViewPolicy --access-scope type=cluster --region 'eu-west-1' >/dev/null
 
 echo "Attached the policy to user $PRINCIPAL_NAME."

@@ -3,6 +3,8 @@
 # Deploy: aws cloudformation deploy --template-file template.yaml --stack-name github-deploy --capabilities CAPABILITY_NAMED_IAM --no-fail-on-empty-changeset
 # If the first deploy fails, delete the stack (aws cloudformation delete-stack --stack-name github-deploy) before deploying again.
 
+# Deploy this stack in account 123456789012: the trust policy trusts GitHub through that account's OIDC provider.
+
 # The trust policy uses the GitHub OIDC provider. If your account doesn't have it yet, add this resource and DependsOn: GitHubOidcProvider on Role:
 #   GitHubOidcProvider:
 #     Type: AWS::IAM::OIDCProvider

@@ -5,6 +5,12 @@ $ErrorActionPreference = 'Stop'
 
 $RoleName = 'eks-admin-cli'
 
+# The EKS steps need a region: stop before creating anything if none is configured.
+if (-not $env:AWS_REGION -and -not $env:AWS_DEFAULT_REGION) {
+  $ConfiguredRegion = aws configure get region
+  if (-not $ConfiguredRegion) { throw "No AWS region configured: set AWS_REGION to your EKS cluster's region (or run aws configure) and run this again." }
+}
+
 # Trust policy: who can assume the role
 [System.IO.File]::WriteAllText((Join-Path $PWD.ProviderPath 'trust.json'), @'
 {
@@ -42,29 +48,34 @@ $RoleName = 'eks-admin-cli'
 }
 '@)
 
-aws iam create-role --role-name $RoleName --assume-role-policy-document file://trust.json --description 'Created with RoleCraft' --no-cli-pager | Out-Null
+aws iam create-role "--role-name=$RoleName" --assume-role-policy-document file://trust.json --description 'Created with RoleCraft' --no-cli-pager | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "aws failed: create-role" }
-$PolicyArn = aws iam create-policy --policy-name "${RoleName}-policy" --policy-document file://policy.json --query Policy.Arn --output text --no-cli-pager
+$PolicyArn = aws iam create-policy "--policy-name=${RoleName}-policy" --policy-document file://policy.json --query Policy.Arn --output text --no-cli-pager
 if ($LASTEXITCODE -ne 0) { throw "aws failed: create-policy" }
-aws iam attach-role-policy --role-name $RoleName --policy-arn $PolicyArn --no-cli-pager
+aws iam attach-role-policy "--role-name=$RoleName" "--policy-arn=$PolicyArn" --no-cli-pager
 if ($LASTEXITCODE -ne 0) { throw "aws failed: attach-role-policy" }
 
 # EC2 instances use roles through an instance profile.
-aws iam create-instance-profile --instance-profile-name $RoleName --no-cli-pager | Out-Null
+aws iam create-instance-profile "--instance-profile-name=$RoleName" --no-cli-pager | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "aws failed: create-instance-profile" }
-aws iam add-role-to-instance-profile --instance-profile-name $RoleName --role-name $RoleName --no-cli-pager
+aws iam add-role-to-instance-profile "--instance-profile-name=$RoleName" "--role-name=$RoleName" --no-cli-pager
 if ($LASTEXITCODE -ne 0) { throw "aws failed: add-role-to-instance-profile" }
 
 # Give kubectl access to your EKS cluster(s) through EKS access entries.
 # The cluster's authentication mode must be API or API_AND_CONFIG_MAP for access entries.
 # Change AmazonEKSViewPolicy to AmazonEKSEditPolicy or AmazonEKSClusterAdminPolicy if more access is needed.
-aws iam wait role-exists --role-name $RoleName --no-cli-pager
+aws iam wait role-exists "--role-name=$RoleName" --no-cli-pager
 if ($LASTEXITCODE -ne 0) { throw "aws failed: wait role-exists" }
-$RoleArn = aws iam get-role --role-name $RoleName --query Role.Arn --output text --no-cli-pager
+$RoleArn = aws iam get-role "--role-name=$RoleName" --query Role.Arn --output text --no-cli-pager
 if ($LASTEXITCODE -ne 0) { throw "aws failed: get-role" }
-aws eks create-access-entry --cluster-name 'prod' --principal-arn "$RoleArn" --no-cli-pager | Out-Null
-if ($LASTEXITCODE -ne 0) { throw "aws failed: create-access-entry" }
-aws eks associate-access-policy --cluster-name 'prod' --principal-arn "$RoleArn" --policy-arn arn:aws:eks::aws:cluster-access-policy/AmazonEKSViewPolicy --access-scope type=cluster --no-cli-pager | Out-Null
+for ($Attempt = 1; ; $Attempt++) {
+  aws eks create-access-entry '--cluster-name=prod' "--principal-arn=$RoleArn" --no-cli-pager | Out-Null
+  if ($LASTEXITCODE -eq 0) { break }
+  if ($Attempt -ge 6) { throw "aws failed: create-access-entry. EKS still rejects the access entry after 6 attempts (see the error above)." }
+  Write-Output "EKS can reject a new IAM principal for a short while; retrying in 10 seconds ($Attempt/6)."
+  Start-Sleep -Seconds 10
+}
+aws eks associate-access-policy '--cluster-name=prod' "--principal-arn=$RoleArn" --policy-arn arn:aws:eks::aws:cluster-access-policy/AmazonEKSViewPolicy --access-scope type=cluster --no-cli-pager | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "aws failed: associate-access-policy" }
 
 Write-Output "Created role $RoleName."

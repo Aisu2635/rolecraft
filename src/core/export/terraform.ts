@@ -2,7 +2,7 @@ import type { Trust } from "../model/model";
 import type { PolicyDocument } from "../types";
 import { EKS_COMMENTS, EKS_GROUP_COMMENT, EKS_VIEW_POLICY, eksClusters, shortHash } from "./eks";
 import { stringifyPolicy, type ExportFile } from "./json";
-import { hclString, tfLabel, type ExportInput } from "./types";
+import { githubAccount, hclString, tfLabel, type ExportInput } from "./types";
 
 const JSON_MARK = "ROLECRAFT_JSON";
 /** AWS provider constraint written to main.tf (also quoted in the README). */
@@ -26,13 +26,20 @@ function attrLines(attrs: Attr[]): string[] {
   return attrs.map(([k, v]) => `  ${k.padEnd(width)} = ${v}`);
 }
 
-/** A resource block with aligned attributes and an optional heredoc JSON attribute. */
-function resource(type: string, label: string, attrs: Attr[], json?: [key: string, doc: PolicyDocument]): string {
+/** A resource block with aligned attributes, an optional heredoc JSON attribute and optional trailing nested blocks. */
+function resource(
+  type: string,
+  label: string,
+  attrs: Attr[],
+  json?: [key: string, doc: PolicyDocument],
+  nested: string[] = [],
+): string {
   const lines = [`resource "${type}" "${label}" {`, ...attrLines(attrs)];
   if (json) {
     // Blank lines isolate the multi-line attribute from fmt's alignment groups.
     lines.push("", `  ${json[0]} = <<-${JSON_MARK}`, heredocBody(json[1]) + JSON_MARK);
   }
+  if (nested.length > 0) lines.push("", ...nested);
   lines.push("}");
   return lines.join("\n");
 }
@@ -91,6 +98,29 @@ function preamble(region: string | undefined, needsEksRegion: boolean): string[]
 function eksLabel(label: string, cluster: string): string {
   const l = tfLabel(cluster);
   return `${label}_eks_${l === cluster ? l : `${l}_${shortHash(cluster)}`}`;
+}
+
+/**
+ * Per-ARN label for an existing managed policy attachment (not a position), so adding, removing or reordering
+ * ARNs never destroys and recreates another attachment: the policy name, plus a hash of the whole ARN unless
+ * the label spells out an AWS managed policy exactly (customer policies, paths and lossy names get one).
+ */
+export function managedLabel(label: string, arn: string): string {
+  const name = arn.slice(arn.lastIndexOf("/") + 1);
+  const l = tfLabel(name);
+  return `${label}_managed_${arn === `arn:aws:iam::aws:policy/${l}` ? l : `${l}_${shortHash(arn)}`}`;
+}
+
+/** `lifecycle { precondition }` that stops the plan when the credentials are for another account. */
+function accountPrecondition(account: string): string[] {
+  return [
+    "  lifecycle {",
+    "    precondition {",
+    `      condition     = data.aws_caller_identity.current.account_id == ${hclString(account)}`,
+    `      error_message = ${hclString(`The trust policy trusts GitHub through account ${account}'s OIDC provider: apply this with credentials for account ${account}.`)}`,
+    "    }",
+    "  }",
+  ];
 }
 
 /** Access entry + View policy association per cluster; `lead` lines are prefixed to the first block. */
@@ -157,9 +187,9 @@ function principalBlocks(input: ExportInput, trust: PrincipalTrust, label: strin
       );
     }
   }
-  model.managedPolicyArns.forEach((arn, i) => {
+  model.managedPolicyArns.forEach((arn) => {
     blocks.push(
-      resource(`aws_iam_${kind}_policy_attachment`, `${label}_managed_${i + 1}`, [
+      resource(`aws_iam_${kind}_policy_attachment`, managedLabel(label, arn), [
         [kind, who],
         ["policy_arn", hclString(arn)],
       ]),
@@ -200,6 +230,15 @@ function roleBlocks(input: ExportInput, trustDoc: PolicyDocument, label: string,
       ].join("\n"),
     );
   }
+  const account = githubAccount(model);
+  if (account) {
+    blocks.push(
+      [
+        "# The plan stops (precondition on the role) if these credentials aren't for the trust policy's account.",
+        'data "aws_caller_identity" "current" {}',
+      ].join("\n"),
+    );
+  }
   blocks.push(
     resource(
       "aws_iam_role",
@@ -209,6 +248,7 @@ function roleBlocks(input: ExportInput, trustDoc: PolicyDocument, label: string,
         ["description", hclString(TAG)],
       ],
       ["assume_role_policy", trustDoc],
+      account ? accountPrecondition(account) : [],
     ),
   );
   if (result.policy) {
@@ -242,9 +282,9 @@ function roleBlocks(input: ExportInput, trustDoc: PolicyDocument, label: string,
       );
     }
   }
-  model.managedPolicyArns.forEach((arn, i) => {
+  model.managedPolicyArns.forEach((arn) => {
     blocks.push(
-      resource("aws_iam_role_policy_attachment", `${label}_managed_${i + 1}`, [
+      resource("aws_iam_role_policy_attachment", managedLabel(label, arn), [
         ["role", `${roleRef}.name`],
         ["policy_arn", hclString(arn)],
       ]),

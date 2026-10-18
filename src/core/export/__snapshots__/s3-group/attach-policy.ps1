@@ -38,9 +38,9 @@ $PrincipalName = 'analytics-team'
 }
 '@)
 
-$PolicyArn = aws iam create-policy --policy-name "${RoleName}-policy" --policy-document file://policy.json --query Policy.Arn --output text --no-cli-pager
+$PolicyArn = aws iam create-policy "--policy-name=${RoleName}-policy" --policy-document file://policy.json --query Policy.Arn --output text --no-cli-pager
 if ($LASTEXITCODE -ne 0) { throw "aws failed: create-policy" }
-aws iam attach-group-policy --group-name $PrincipalName --policy-arn $PolicyArn --no-cli-pager
+aws iam attach-group-policy "--group-name=$PrincipalName" "--policy-arn=$PolicyArn" --no-cli-pager
 if ($LASTEXITCODE -ne 0) { throw "aws failed: attach-group-policy" }
 
 Write-Output "Attached the policy to group $PrincipalName."

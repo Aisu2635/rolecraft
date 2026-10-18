@@ -59,4 +59,25 @@ export const VARIANT_CASES: Record<string, () => ExportInput> = {
       policyMode: "inline",
       grants: [moduleGrant("g1", "s3", "list-read", { bucket: "data-lake", prefixes: ["reports/"] })],
     }),
+  // IAM names may start with "-": every name flag must reach the AWS CLI as --flag=value (check_cli enforces it).
+  "dash-role-eks": () =>
+    build({
+      name: "-lead-role",
+      trust: { kind: "service", service: "ec2" },
+      grants: [
+        moduleGrant("g1", "s3", "list-read", { bucket: "data-lake", prefixes: ["reports/"] }),
+        moduleGrant("g2", "eks", "kubectl", { cluster: "prod" }),
+      ],
+      managedPolicyArns: ["arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"],
+    }),
+  "dash-user-eks": () =>
+    build({
+      name: "-bot-access",
+      trust: { kind: "principal", target: "user", name: "-bot" },
+      grants: [
+        moduleGrant("g1", "s3", "list-read", { bucket: "data-lake", prefixes: ["reports/"] }),
+        moduleGrant("g2", "eks", "kubectl", { cluster: "prod" }),
+      ],
+      managedPolicyArns: ["arn:aws:iam::aws:policy/ReadOnlyAccess"],
+    }),
 };

@@ -5,6 +5,11 @@ $ErrorActionPreference = 'Stop'
 
 $RoleName = 'github-deploy'
 
+# Stop before creating anything if these credentials aren't for account 123456789012 (the trust policy's account).
+$CallerAccount = aws sts get-caller-identity --query Account --output text --no-cli-pager
+if ($LASTEXITCODE -ne 0) { throw "aws failed: get-caller-identity" }
+if ($CallerAccount -ne '123456789012') { throw "These credentials are for account $CallerAccount, but the trust policy trusts GitHub through account 123456789012. Use credentials for account 123456789012." }
+
 # Trust policy: who can assume the role
 [System.IO.File]::WriteAllText((Join-Path $PWD.ProviderPath 'trust.json'), @'
 {
@@ -68,11 +73,11 @@ if (-not $existing -or $existing -eq 'None') {
   if ($LASTEXITCODE -ne 0) { throw "aws failed: create-open-id-connect-provider" }
 }
 
-aws iam create-role --role-name $RoleName --assume-role-policy-document file://trust.json --description 'Created with RoleCraft' --no-cli-pager | Out-Null
+aws iam create-role "--role-name=$RoleName" --assume-role-policy-document file://trust.json --description 'Created with RoleCraft' --no-cli-pager | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "aws failed: create-role" }
-$PolicyArn = aws iam create-policy --policy-name "${RoleName}-policy" --policy-document file://policy.json --query Policy.Arn --output text --no-cli-pager
+$PolicyArn = aws iam create-policy "--policy-name=${RoleName}-policy" --policy-document file://policy.json --query Policy.Arn --output text --no-cli-pager
 if ($LASTEXITCODE -ne 0) { throw "aws failed: create-policy" }
-aws iam attach-role-policy --role-name $RoleName --policy-arn $PolicyArn --no-cli-pager
+aws iam attach-role-policy "--role-name=$RoleName" "--policy-arn=$PolicyArn" --no-cli-pager
 if ($LASTEXITCODE -ne 0) { throw "aws failed: attach-role-policy" }
 
 Write-Output "Created role $RoleName."

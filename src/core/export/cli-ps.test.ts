@@ -60,8 +60,17 @@ describe("exportCliPowerShell", () => {
     lines.forEach((l, i) => {
       if (/^\s*(\$\w+ = )?aws /.test(l)) {
         calls++;
+        // `aws configure get region` exits 1 when unset: its output is checked instead.
+        if (l.includes("aws configure get region")) {
+          expect(lines[i + 1]).toMatch(/^\s*if \(-not \$ConfiguredRegion\) \{ throw /);
+          return;
+        }
         expect(l).toContain(" --no-cli-pager");
-        expect(lines[i + 1]).toMatch(/^\s*if \(\$LASTEXITCODE -ne 0\) \{ throw "aws failed: [\w -]+" \}$/);
+        // The EKS access entry retry loop breaks on success and throws after the last attempt.
+        const next = l.includes("eks create-access-entry")
+          ? /^\s*if \(\$LASTEXITCODE -eq 0\) \{ break \}$/
+          : /^\s*if \(\$LASTEXITCODE -ne 0\) \{ throw "aws failed: [\w -]+" \}$/;
+        expect(lines[i + 1]).toMatch(next);
       }
     });
     expect(calls).toBeGreaterThan(0);
@@ -111,10 +120,10 @@ describe("exportCliPowerShell", () => {
   it("eks access entries; region only when set", () => {
     const input = make("eks-kubectl");
     const c = exportCliPowerShell(input).content;
-    expect(c).toContain("aws eks create-access-entry --cluster-name 'prod' --principal-arn \"$RoleArn\" --no-cli-pager | Out-Null\n");
+    expect(c).toContain("  aws eks create-access-entry '--cluster-name=prod' \"--principal-arn=$RoleArn\" --no-cli-pager | Out-Null\n");
     expect(c).toContain("AmazonEKSViewPolicy --access-scope type=cluster --no-cli-pager | Out-Null\n");
     const r = exportCliPowerShell({ ...input, model: { ...input.model, region: "eu-west-1" } }).content;
-    expect(r).toContain("--cluster-name 'prod' --principal-arn \"$RoleArn\" --region 'eu-west-1' --no-cli-pager | Out-Null");
+    expect(r).toContain("'--cluster-name=prod' \"--principal-arn=$RoleArn\" --region 'eu-west-1' --no-cli-pager | Out-Null");
   });
   it("eks under group trust emits a comment, no aws eks calls", () => {
     const input = make("s3-group");
@@ -138,7 +147,7 @@ describe("exportCliPowerShell", () => {
       { ...g, id: "dup" },
     ];
     const c = exportCliPowerShell({ ...input, model: { ...input.model, grants: bad } }).content;
-    expect(c.match(/create-access-entry --cluster/g)).toHaveLength(1);
+    expect(c.match(/create-access-entry '--cluster/g)).toHaveLength(1);
   });
   it("principal user, inline and managed ARNs", () => {
     const input = make("s3-group");
@@ -148,12 +157,12 @@ describe("exportCliPowerShell", () => {
       managedPolicyArns: ["arn:aws:iam::aws:policy/ReadOnlyAccess"],
     };
     const inline = exportCliPowerShell({ ...input, model: { ...base, policyMode: "inline" } }).content;
-    expect(inline).toContain("put-user-policy --user-name $PrincipalName");
+    expect(inline).toContain('put-user-policy "--user-name=$PrincipalName"');
     expect(inline).toContain(
-      "attach-user-policy --user-name $PrincipalName --policy-arn 'arn:aws:iam::aws:policy/ReadOnlyAccess'",
+      "attach-user-policy \"--user-name=$PrincipalName\" --policy-arn 'arn:aws:iam::aws:policy/ReadOnlyAccess'",
     );
     expect(exportCliPowerShell({ ...input, model: base }).content).toContain(
-      "attach-user-policy --user-name $PrincipalName --policy-arn $PolicyArn",
+      'attach-user-policy "--user-name=$PrincipalName" "--policy-arn=$PolicyArn"',
     );
   });
   it("managed ARNs only (no policy)", () => {
@@ -187,11 +196,11 @@ describe("exportCliPowerShell", () => {
   );
   it("reliability: pager, role wait, quiet output, auth mode note", () => {
     const c = exportCliPowerShell(make("eks-kubectl")).content;
-    expect(c).toContain("aws iam wait role-exists --role-name $RoleName --no-cli-pager\n");
+    expect(c).toContain('aws iam wait role-exists "--role-name=$RoleName" --no-cli-pager\n');
     expect(c.indexOf("wait role-exists")).toBeLessThan(c.indexOf("create-access-entry"));
     expect(c).toContain("authentication mode must be API or API_AND_CONFIG_MAP");
     for (const cmd of ["iam create-role", "iam create-instance-profile", "eks create-access-entry", "eks associate-access-policy"]) {
-      const line = c.split("\n").find((l) => l.startsWith(`aws ${cmd}`));
+      const line = c.split("\n").find((l) => l.trimStart().startsWith(`aws ${cmd}`));
       expect(line?.endsWith(" | Out-Null")).toBe(true);
     }
   });
@@ -206,12 +215,12 @@ describe("exportCliPowerShell", () => {
     const c = exportCliPowerShell({ ...input, model }).content;
     expect(c).toContain("$PrincipalName = 'o''brien'\n");
     expect(c).toContain(
-      '$PrincipalArn = aws iam get-user --user-name $PrincipalName --query User.Arn --output text --no-cli-pager\nif ($LASTEXITCODE -ne 0) { throw "aws failed: get-user" }\n',
+      '$PrincipalArn = aws iam get-user "--user-name=$PrincipalName" --query User.Arn --output text --no-cli-pager\nif ($LASTEXITCODE -ne 0) { throw "aws failed: get-user" }\n',
     );
     expect(c).not.toContain("get-caller-identity");
     expect(c).not.toContain(":user/");
     expect(c).toContain(
-      `aws eks create-access-entry --cluster-name 'prod' --principal-arn "$PrincipalArn" --region 'eu-west-1' --no-cli-pager | Out-Null`,
+      `aws eks create-access-entry '--cluster-name=prod' "--principal-arn=$PrincipalArn" --region 'eu-west-1' --no-cli-pager | Out-Null`,
     );
     expect(c).toContain("associate-access-policy");
     expect(c).not.toContain("wait role-exists");
@@ -229,7 +238,9 @@ describe("exportCliPowerShell", () => {
     const c = exportCliPowerShell({ ...input, model }).content;
     const q = "'x''’’; $(id) `whoami`; calc\n$env:USERNAME'";
     expect(c).toContain(`$RoleName = ${q}\n`);
-    const rest = c.replaceAll(q, "Q");
+    const cluster = "'--cluster-name=x''’’; $(id) `whoami`; calc\n$env:USERNAME'";
+    expect(c).toContain(`create-access-entry ${cluster} `);
+    const rest = c.replaceAll(q, "Q").replaceAll(cluster, "C");
     expect(rest).not.toContain("whoami");
     expect(rest).not.toContain("$(id)");
     expect(rest).not.toContain("calc");

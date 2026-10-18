@@ -14,6 +14,18 @@ export function exportable(result: GenerateResult, model: RoleModel): boolean {
   return !hasErrors(result.issues) && (result.policy !== null || model.managedPolicyArns.length > 0);
 }
 
+/**
+ * Account the GitHub trust policy is tied to (its OIDC provider ARN names it), when the scripts and Terraform
+ * should refuse to run with credentials for another account. Null for every other trust.
+ */
+export function githubAccount(model: RoleModel): string | null {
+  return model.trust.kind === "github" && model.accountId ? model.accountId : null;
+}
+
+/** Message when the credentials' account differs from the trust policy's (`caller` is how the script names it). */
+export const accountMismatch = (account: string, caller: string): string =>
+  `These credentials are for account ${caller}, but the trust policy trusts GitHub through account ${account}. Use credentials for account ${account}.`;
+
 /** POSIX single-quote. */
 export function shQuote(s: string): string {
   return `'${s.replace(/'/g, String.raw`'\''`)}'`;
