@@ -12,6 +12,8 @@ export interface BuilderState {
   editor: EditorMode;
   focusTarget: string | null;
   shareStatus: "ok" | "too-large";
+  /** When true, every field shows its error without waiting for a blur (restored roles, blocked export, Jump to). */
+  revealErrors: boolean;
   setFields(p: ModelFields): void;
   setTrust(t: Trust): void;
   addGrant(g: Grant): void;
@@ -23,6 +25,7 @@ export interface BuilderState {
   setEditor(e: EditorMode): void;
   focus(target: string | null): void;
   setShareStatus(s: BuilderState["shareStatus"]): void;
+  revealAllErrors(): void;
 }
 
 export const useBuilderStore = create<BuilderState>((set) => ({
@@ -31,6 +34,7 @@ export const useBuilderStore = create<BuilderState>((set) => ({
   editor: "sentences",
   focusTarget: null,
   shareStatus: "ok",
+  revealErrors: false,
   setFields: (p) => set((s) => ({ model: ops.setFields(s.model, p) })),
   setTrust: (t) => set((s) => ({ model: ops.setTrust(s.model, t) })),
   addGrant: (g) => set((s) => ({ model: ops.addGrant(s.model, g) })),
@@ -40,11 +44,20 @@ export const useBuilderStore = create<BuilderState>((set) => ({
       model: ops.removeGrant(s.model, id),
       focusTarget: s.focusTarget === "grant:" + id ? null : s.focusTarget,
     })),
-  replaceModel: (m) => set({ model: m }),
-  reset: () => set({ model: createEmptyModel(), step: 0, editor: "sentences", focusTarget: null, shareStatus: "ok" }),
+  replaceModel: (m) => set({ model: m, revealErrors: true }),
+  reset: () =>
+    set({
+      model: createEmptyModel(),
+      step: 0,
+      editor: "sentences",
+      focusTarget: null,
+      shareStatus: "ok",
+      revealErrors: false,
+    }),
   // A target that nothing claimed before the step changed can never be satisfied; drop it so it cannot steal focus later.
   setStep: (step) => set({ step, focusTarget: null }),
   setEditor: (editor) => set({ editor }),
   focus: (focusTarget) => set({ focusTarget }),
   setShareStatus: (shareStatus) => set({ shareStatus }),
+  revealAllErrors: () => set({ revealErrors: true }),
 }));

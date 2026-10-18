@@ -54,4 +54,17 @@ describe("builder store", () => {
     expect(st.focusTarget).toBeNull();
     expect(st.shareStatus).toBe("ok");
   });
+
+  it("revealErrors: off by default, on after replaceModel or revealAllErrors, off after reset", () => {
+    const s = useBuilderStore.getState();
+    expect(s.revealErrors).toBe(false);
+    s.revealAllErrors();
+    expect(useBuilderStore.getState().revealErrors).toBe(true);
+    s.reset();
+    expect(useBuilderStore.getState().revealErrors).toBe(false);
+    s.replaceModel(createEmptyModel());
+    expect(useBuilderStore.getState().revealErrors).toBe(true);
+    s.reset();
+    expect(useBuilderStore.getState().revealErrors).toBe(false);
+  });
 });

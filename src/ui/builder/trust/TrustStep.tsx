@@ -75,6 +75,7 @@ function Field(props: {
   children: ReactNode;
 }): JSX.Element {
   const [touched, setTouched] = useState(false);
+  const revealAll = useBuilderStore((s) => s.revealErrors);
   const reveal = useCallback(() => setTouched(true), []);
   const ref = useFocusTarget<HTMLDivElement>("field:" + props.path, reveal);
   return (
@@ -82,7 +83,7 @@ function Field(props: {
       <FormField
         label={props.label}
         description={props.description}
-        errorText={touched ? props.error : undefined}
+        errorText={touched || revealAll ? props.error : undefined}
       >
         {props.children}
       </FormField>

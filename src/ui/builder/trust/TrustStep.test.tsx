@@ -79,6 +79,15 @@ describe("TrustStep", () => {
     expect(screen.queryByText(/GitHub owner must be/)).toBeNull();
   });
 
+  it("shows pristine field errors once errors are revealed", () => {
+    render(<TrustStep />);
+    pick("GitHub Actions");
+    expect(screen.queryByText(/GitHub repository must be/)).toBeNull();
+    act(() => store().revealAllErrors());
+    expect(screen.getByText(/^GitHub repository must be/)).toBeInTheDocument();
+    expect(screen.getByText(/^GitHub owner must be/)).toBeInTheDocument();
+  });
+
   it("the GitHub AWS account ID writes the model and shows the needs-account error", () => {
     render(<TrustStep />);
     pick("GitHub Actions");

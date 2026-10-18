@@ -4,6 +4,7 @@ import Input from "@cloudscape-design/components/input";
 import SpaceBetween from "@cloudscape-design/components/space-between";
 import { useState, type JSX, type ReactNode } from "react";
 import type { Issue } from "../../../core/types";
+import { useBuilderStore } from "../../../state/builder";
 import { errorTextAt } from "../issues";
 
 export const isRecord = (v: unknown): v is Record<string, unknown> =>
@@ -19,9 +20,14 @@ export function ScopeField(props: {
   children: ReactNode;
 }): JSX.Element {
   const [touched, setTouched] = useState(false);
+  const reveal = useBuilderStore((s) => s.revealErrors);
   return (
     <div onBlur={() => setTouched(true)}>
-      <FormField label={props.label} description={props.description} errorText={touched ? props.error : undefined}>
+      <FormField
+        label={props.label}
+        description={props.description}
+        errorText={touched || reveal ? props.error : undefined}
+      >
         {props.children}
       </FormField>
     </div>
@@ -38,9 +44,10 @@ function ListItem(props: {
   onRemove(): void;
 }): JSX.Element {
   const [touched, setTouched] = useState(false);
+  const reveal = useBuilderStore((s) => s.revealErrors);
   return (
     <div onBlur={() => setTouched(true)}>
-      <FormField errorText={touched ? props.error : undefined} stretch>
+      <FormField errorText={touched || reveal ? props.error : undefined} stretch>
         <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
           <div style={{ flex: 1 }}>
             <Input ariaLabel={props.label} value={props.value} onChange={(e) => props.onChange(e.detail.value)} />

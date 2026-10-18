@@ -1,7 +1,9 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Scope } from "../../../core/model/model";
 import type { Issue } from "../../../core/types";
+import { createEmptyModel } from "../../../core/model/model";
+import { useBuilderStore } from "../../../state/builder";
 import { S3ScopeEditor } from "./S3ScopeEditor";
 import { ScopeHarness } from "./harness";
 
@@ -63,6 +65,24 @@ describe("S3ScopeEditor", () => {
     expect(screen.queryByText("bad bucket")).toBeNull();
     fireEvent.blur(screen.getByLabelText("Bucket"));
     expect(screen.getByText("bad bucket")).toBeInTheDocument();
+  });
+
+  it("shows errors without a blur after replaceModel, and hides them again after reset", () => {
+    const issues: Issue[] = [
+      { id: "E_MODULE_DATA", severity: "error", message: "bad bucket", path: "data.bucket", grantId: "g1" },
+      { id: "E_MODULE_DATA", severity: "error", message: "bad prefix", path: "data.prefixes[0]", grantId: "g1" },
+    ];
+    act(() => useBuilderStore.getState().replaceModel(createEmptyModel()));
+    const { unmount } = render(
+      <S3ScopeEditor data={{ bucket: "Bad", prefixes: ["x"] }} issues={issues} onChange={() => {}} />,
+    );
+    expect(screen.getByText("bad bucket")).toBeInTheDocument();
+    expect(screen.getByText("bad prefix")).toBeInTheDocument();
+    unmount();
+    act(() => useBuilderStore.getState().reset());
+    render(<S3ScopeEditor data={{ bucket: "Bad", prefixes: ["x"] }} issues={issues} onChange={() => {}} />);
+    expect(screen.queryByText("bad bucket")).toBeNull();
+    expect(screen.queryByText("bad prefix")).toBeNull();
   });
 
   it("tolerates data that is not shaped like S3 data", () => {
