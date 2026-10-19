@@ -390,7 +390,7 @@ class UndefinedVariables(unittest.TestCase):
 
     def test_unquoted_heredoc_body_is_expanded(self):
         # The shell expands $X, ${X} and $(...) in an unquoted heredoc body; quotes and # are literal there.
-        text = "R='r'\ncat > p.json <<EOF\n{\"Role\": \"$R\", \"Bad\": '$NOPE'}\n# ${TYPO}\n\\$ESCAPED $(echo $INNER)\nEOF"
+        text = 'R=\'r\'\ncat > p.json <<EOF\n{"Role": "$R", "Bad": \'$NOPE\'}\n# ${TYPO}\n\\$ESCAPED $(echo $INNER)\nEOF'
         self.assertEqual(
             extraction(text),
             ["3: $NOPE is never assigned", "4: $TYPO is never assigned", "5: $INNER is never assigned"],
@@ -402,7 +402,7 @@ class UndefinedVariables(unittest.TestCase):
             self.assertEqual(extraction(f"cat > p.json <<{marker}\n$NOPE ${{TYPO}}\nEOF"), [], marker)
 
     def test_double_quoted_here_string_is_expanded(self):
-        text = "$R = 'r'\n$s = @\"\n{\"Role\": \"$R\", \"Bad\": '$Nope'}\n$($Inner) `$Escaped $env:AWS_REGION\n\"@"
+        text = '$R = \'r\'\n$s = @"\n{"Role": "$R", "Bad": \'$Nope\'}\n$($Inner) `$Escaped $env:AWS_REGION\n"@'
         self.assertEqual(extraction(text, "ps"), ["3: $Nope is never assigned", "4: $Inner is never assigned"])
 
     def test_single_quoted_here_string_is_literal(self):
