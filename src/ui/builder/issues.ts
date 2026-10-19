@@ -38,7 +38,7 @@ export function focusIdFor(issue: Issue): { step: Step; target: string } | null 
 }
 
 /** Info issues that say part of the user's input was left out of the policy. The row shows them as notes. */
-const DROPPED_INPUT = new Set(["I_ACTION_NOT_SCOPED", "I_S3_PREFIX_SUBSUMED"]);
+const DROPPED_INPUT = new Set(["I_ACTION_NOT_SCOPED"]);
 
 /** Whether a grant's row lists this issue: errors, warnings, and the info notes about dropped input. */
 export function shownOnRow(issue: Issue): boolean {

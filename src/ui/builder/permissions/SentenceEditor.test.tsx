@@ -239,11 +239,11 @@ describe("SentenceEditor", () => {
     expect(notes[0]!.closest('[class*="status-info"]')).not.toBeNull();
   });
 
-  it("notes on the row, as info, an S3 folder that the whole bucket already covers", async () => {
+  it("warns on the row when a folder is the whole bucket beside other folders", async () => {
     const cat = await readyCatalog("s3");
     store().addGrant(moduleGrant("g1", "s3", "list-read", { bucket: "data-lake", prefixes: ["reports/", "/"] }));
     render(withCatalog(cat, <SentenceEditor />));
-    const note = screen.getByText(/the folder reports\/ is already covered and left out/);
-    expect(note.closest('[class*="status-info"]')).not.toBeNull();
+    const note = screen.getByText(/Folder 2 is the whole bucket, so the other folders add nothing/);
+    expect(note.closest('[class*="status-warning"]')).not.toBeNull();
   });
 });

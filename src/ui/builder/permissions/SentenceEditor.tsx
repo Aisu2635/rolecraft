@@ -32,8 +32,8 @@ function GrantEditor(props: {
   const { grant, svc, issues, name, userOpen, setUserOpen } = props;
   const updateGrant = useBuilderStore((s) => s.updateGrant);
   const mine = grantIssues(issues, grant.id);
-  // Issues with a path appear on their own field; the row lists only the ones no field can show.
-  const shown = mine.filter((i) => shownOnRow(i) && i.path === undefined);
+  // Errors with a path appear on their own field (fields show only errors); the row lists the ones no field can show.
+  const shown = mine.filter((i) => shownOnRow(i) && (i.path === undefined || i.severity !== "error"));
   const hasErrors = mine.some((i) => i.severity === "error");
   // Open while the grant has errors, then stay open so the editor does not collapse as the last error is fixed.
   const [sawErrors, setSawErrors] = useState(false);

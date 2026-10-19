@@ -150,13 +150,17 @@ function build(
   let prefixes = normalize(data.prefixes);
   const whole = prefixes.includes("");
   if (whole) {
-    const dropped = prefixes.filter((p) => p !== "");
-    if (dropped.length > 0) {
-      issues.push({
-        id: "I_S3_PREFIX_SUBSUMED",
-        severity: "info",
-        grantId: grant.id,
-        message: `Because the whole bucket is included, the folder${dropped.length > 1 ? "s" : ""} ${dropped.join(", ")} ${dropped.length > 1 ? "are" : "is"} already covered and left out.`,
+    // Blank rows beside others are errors above, so only an explicit "/" (or "//") gets here beside other folders.
+    if (prefixes.length > 1) {
+      data.prefixes.forEach((raw, i) => {
+        if (normalize([raw])[0] !== "") return;
+        issues.push({
+          id: "W_S3_PREFIX_ROOT",
+          severity: "warning",
+          grantId: grant.id,
+          path: `data.prefixes[${i}]`,
+          message: `Folder ${i + 1} is the whole bucket, so the other folders add nothing. Remove it to keep access to those folders only.`,
+        });
       });
     }
     prefixes = [""];

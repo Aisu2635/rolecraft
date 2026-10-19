@@ -190,7 +190,7 @@ Issue messages name the actions/resources.
 
 **Files:** Create `src/core/explain/explain.ts`, `explain.test.ts`.
 
-**Interfaces:** `export function explain(model: RoleModel, catalog: Catalog): { can: string[]; cannot: string[] }`.
+**Interfaces:** `export function explain(model: RoleModel, catalog: Catalog): { can: { grantId: string; text: string }[]; cannot: string[] }`.
 - `can`: one sentence per grant — module grants use `MODULES[id].explain`; generic grants: "Can <levels joined with "and", lowercased> on <service name> (<"all resources" | N specific resources>)." / explicit actions: "Can use <n> <service name> actions: <first 3 labels>…".
 - `cannot`: for each distinct service in the role, if no granted action has level `Permissions management` → "Cannot change <service name> permissions."; if no granted action name starts with `Delete` → "Cannot delete <service name> resources."; EC2 without `TerminateInstances` → "Cannot terminate EC2 instances." Order: services by name, then the rule order above. Deterministic.
 

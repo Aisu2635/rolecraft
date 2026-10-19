@@ -75,14 +75,28 @@ describe("s3 module", () => {
         Resource: "arn:aws:s3:::data-lake/*",
       },
     ]);
-    expect(r.issues).toHaveLength(1);
-    expect(r.issues[0]).toMatchObject({
-      id: "I_S3_PREFIX_SUBSUMED",
-      severity: "info",
-      grantId: "g1",
-    });
-    expect(r.issues[0]?.message).toContain("a/");
+    expect(r.issues).toStrictEqual([
+      {
+        id: "W_S3_PREFIX_ROOT",
+        severity: "warning",
+        grantId: "g1",
+        path: "data.prefixes[1]",
+        message:
+          "Folder 2 is the whole bucket, so the other folders add nothing. Remove it to keep access to those folders only.",
+      },
+    ]);
     expect(valid(r.statements)).toStrictEqual([]);
+  });
+
+  it("warns on every folder that normalises to the bucket root beside other folders", () => {
+    const r = run("read", { bucket: "data-lake", prefixes: ["reports/", "/"] });
+    expect(r.issues.map((i) => [i.id, i.path])).toStrictEqual([["W_S3_PREFIX_ROOT", "data.prefixes[1]"]]);
+    const two = run("read", { bucket: "data-lake", prefixes: ["//", "a/", "/"] });
+    expect(two.issues.map((i) => [i.id, i.path])).toStrictEqual([
+      ["W_S3_PREFIX_ROOT", "data.prefixes[0]"],
+      ["W_S3_PREFIX_ROOT", "data.prefixes[2]"],
+    ]);
+    expect(run("read", { bucket: "data-lake", prefixes: ["/", "//"] }).issues).toStrictEqual([]);
   });
 
   it("a blank extra prefix is an error on that row, never the whole bucket", () => {

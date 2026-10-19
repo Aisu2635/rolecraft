@@ -23,6 +23,11 @@ const SENSITIVE_GLOBS: { pattern: string; needsStar: boolean }[] = [
   { pattern: "iam:Update*", needsStar: false },
   { pattern: "iam:Delete*", needsStar: false },
   { pattern: "iam:AddUserToGroup", needsStar: false },
+  { pattern: "iam:AddRoleToInstanceProfile", needsStar: false },
+  { pattern: "iam:UploadSSHPublicKey", needsStar: false },
+  { pattern: "iam:ResetServiceSpecificCredential", needsStar: false },
+  { pattern: "iam:TagRole", needsStar: false },
+  { pattern: "iam:TagUser", needsStar: false },
   { pattern: "sts:AssumeRole", needsStar: true },
 ];
 /** Sensitive only when granted as a full service wildcard. */
@@ -33,10 +38,22 @@ const strs = (x: unknown): string[] =>
 
 const hasStar = (resource: unknown): boolean => strs(resource).includes("*");
 
-/** Resources that let iam:PassRole pass (effectively) any role. */
-const BROAD_PASSROLE = [/^arn:[^:]*:iam::[^:]*:\*$/, /^arn:[^:]*:iam::[^:]*:role\/[*?]+$/];
-const broadPassRole = (resource: unknown): string[] =>
-  strs(resource).filter((r) => r === "*" || BROAD_PASSROLE.some((re) => re.test(r)));
+/** Wildcard-only role names, e.g. role/?? (kept from the original rule). */
+const WILDCARD_ROLE_NAME = /^arn:[^:]*:iam::[^:]*:role\/[*?]+$/;
+/** Unrelated role names (one with a path): a resource matching all of them matches any role in the account. */
+const PASSROLE_PROBES = ["q", "Z9/7"];
+const IAM_PREFIX = /^arn:([^:]*):iam::(\$\{[^}]*\}|[^:]*):/;
+
+/** Whether the resource lets iam:PassRole pass (effectively) any role. */
+function isBroadPassRole(r: string): boolean {
+  if (WILDCARD_ROLE_NAME.test(r)) return true;
+  const m = IAM_PREFIX.exec(r);
+  const literal = (x: string | undefined, fallback: string): string => (x && !/[*?]/.test(x) ? x : fallback);
+  const partition = literal(m?.[1], "aws");
+  const account = literal(m?.[2], "123456789012");
+  return PASSROLE_PROBES.every((name) => globMatch(r, `arn:${partition}:iam::${account}:role/${name}`));
+}
+const broadPassRole = (resource: unknown): string[] => strs(resource).filter(isBroadPassRole);
 
 function list(names: string[]): string {
   const sorted = [...new Set(names)].sort();
@@ -72,7 +89,7 @@ function resolve(granted: string, catalog: Catalog): Resolved[] | "all" {
     .map((a) => ({ name: `${svc.key}:${a.name}`, level: a.level }));
 }
 
-function lintStatement(s: Statement, index: number, catalog: Catalog): Issue[] {
+function lintStatement(s: Statement, index: number, catalog: Catalog, module?: string): Issue[] {
   if (s.Effect !== "Allow") return [];
   const issues: Issue[] = [];
   const path = `Statement[${index}]`;
@@ -156,7 +173,7 @@ function lintStatement(s: Statement, index: number, catalog: Catalog): Issue[] {
       path,
     });
   }
-  issues.push(...lintQualifiedOnly(s, actions, index, catalog));
+  issues.push(...lintQualifiedOnly(s, actions, index, catalog, module));
   return issues;
 }
 
@@ -178,17 +195,18 @@ function grantedCatalogActions(actions: string[], serviceKey: string, catalog: C
   return [...out.values()];
 }
 
-function lintQualifiedOnly(s: Statement, actions: string[], index: number, catalog: Catalog): Issue[] {
+function lintQualifiedOnly(s: Statement, actions: string[], index: number, catalog: Catalog, module?: string): Issue[] {
   const issues: Issue[] = [];
   const path = `Statement[${index}]`;
   const resources = strs(s.Resource);
-  const has = new Set(resources);
+  // A wildcard resource such as function:* or "*" also covers the bare ARN.
+  const covered = (arn: string): boolean => resources.some((r) => globMatch(r, arn));
 
   const fnActions = grantedCatalogActions(actions, "lambda", catalog).filter((a) => a.resources.includes("function"));
   if (fnActions.length > 0) {
     for (const r of resources) {
       const m = LAMBDA_QUALIFIED.exec(r);
-      if (m && !has.has(`${m[1] as string}${m[2] as string}`)) {
+      if (m && !covered(`${m[1] as string}${m[2] as string}`)) {
         issues.push({
           id: "L_QUALIFIED_ONLY",
           severity: "warning",
@@ -199,14 +217,15 @@ function lintQualifiedOnly(s: Statement, actions: string[], index: number, catal
     }
   }
 
-  const groupActions = grantedCatalogActions(actions, "logs", catalog).filter(
+  // Every Logs-module action is authorized on log-group:<name>:*, so the bare-ARN advisory is noise for its statements.
+  const groupActions = (module === "logs" ? [] : grantedCatalogActions(actions, "logs", catalog)).filter(
     (a) => a.resources.length === 1 && a.resources[0] === "log-group",
   );
   if (groupActions.length > 0) {
     for (const r of resources) {
       const m = LOGS_QUALIFIED.exec(r);
       const bare = m ? `${m[1] as string}${m[2] as string}` : "";
-      if (m && !has.has(bare)) {
+      if (m && !covered(bare)) {
         issues.push({
           id: "L_QUALIFIED_ONLY",
           severity: "info",
@@ -312,11 +331,13 @@ export function lint(
   policy: PolicyDocument | null,
   trust: PolicyDocument | null,
   catalog: Catalog,
+  /** The module id that built each policy statement (by index); undefined for generic statements. */
+  modules?: readonly (string | undefined)[],
 ): Issue[] {
   try {
     const issues: Issue[] = [];
     if (policy) {
-      policy.Statement.forEach((s, i) => issues.push(...lintStatement(s, i, catalog)));
+      policy.Statement.forEach((s, i) => issues.push(...lintStatement(s, i, catalog, modules?.[i])));
       if (model.trust.kind !== "principal" && containsUsername(policy)) {
         issues.push({
           id: "L_USERNAME_IN_ROLE",

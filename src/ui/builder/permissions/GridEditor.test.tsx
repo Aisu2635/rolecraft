@@ -183,15 +183,15 @@ describe("GridEditor", () => {
     expect(grants().map((g) => g.id)).toEqual(["s3", "ec2"]);
   });
 
-  it("notes, as info, input the policy leaves out: actions no ARN matches, and covered S3 folders", async () => {
+  it("notes, as info, actions no ARN matches, and warns on an S3 folder that is the whole bucket", async () => {
     await setup(
       { id: "tx0", service: "textract", scope: { type: "arns", arns: [] }, access: { type: "levels", levels: ["Read"] } },
       moduleGrant("s3b", "s3", "list-read", { bucket: "data-lake", prefixes: ["reports/", "/"] }),
     );
     const notes = within(region("Amazon Textract")).getAllByText(/was left out because none of the ARNs match/);
     expect(notes[0]!.closest('[class*="status-info"]')).not.toBeNull();
-    const s3 = within(region("Amazon S3")).getByText(/the folder reports\/ is already covered and left out/);
-    expect(s3.closest('[class*="status-info"]')).not.toBeNull();
+    const s3 = within(region("Amazon S3")).getByText(/Folder 2 is the whole bucket, so the other folders add nothing/);
+    expect(s3.closest('[class*="status-warning"]')).not.toBeNull();
   });
 });
 
