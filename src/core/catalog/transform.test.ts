@@ -115,6 +115,23 @@ describe("toSlimService", () => {
     expect(s.conditionKeys).toEqual(["a", "z"]);
     expect(toSlimService(raw)).toEqual(s);
   });
+  it("defaults missing Properties booleans to false and missing ARNFormats to []", () => {
+    const s = toSlimService({
+      Name: "zz",
+      Actions: [
+        { Name: "Tag", Annotations: { Properties: { IsTaggingOnly: true } } },
+        { Name: "Put", Annotations: { Properties: { IsWrite: true } } },
+        { Name: "Get", Annotations: { Properties: {} } },
+      ],
+      Resources: [{ Name: "thing" }],
+    });
+    expect(s.actions.map((a) => [a.name, a.level])).toEqual([
+      ["Get", "Read"],
+      ["Put", "Write"],
+      ["Tag", "Tagging"],
+    ]);
+    expect(s.resources).toEqual([{ name: "thing", arnFormats: [], conditionKeys: [] }]);
+  });
   it("tolerates missing optional top-level lists", () => {
     const s = toSlimService({ Name: "zz", Actions: [{ Name: "A" }] });
     expect(s.resources).toEqual([]);

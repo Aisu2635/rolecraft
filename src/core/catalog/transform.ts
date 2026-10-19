@@ -38,16 +38,17 @@ export function humanizeActionName(name: string): string {
     .join(" ");
 }
 
+// Upstream variance (a missing flag or ARNFormats) must not abort the weekly sync: default them.
 const RawAction = z.object({
   Name: z.string(),
   ActionConditionKeys: z.array(z.string()).optional(),
   Annotations: z
     .object({
       Properties: z.object({
-        IsList: z.boolean(),
-        IsPermissionManagement: z.boolean(),
-        IsTaggingOnly: z.boolean(),
-        IsWrite: z.boolean(),
+        IsList: z.boolean().default(false),
+        IsPermissionManagement: z.boolean().default(false),
+        IsTaggingOnly: z.boolean().default(false),
+        IsWrite: z.boolean().default(false),
       }),
     })
     .optional(),
@@ -55,7 +56,7 @@ const RawAction = z.object({
 });
 const RawResource = z.object({
   Name: z.string(),
-  ARNFormats: z.array(z.string()),
+  ARNFormats: z.array(z.string()).default([]),
   ConditionKeys: z.array(z.string()).optional(),
 });
 const RawService = z.object({
