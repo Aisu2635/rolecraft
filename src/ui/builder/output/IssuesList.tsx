@@ -4,7 +4,7 @@ import SpaceBetween from "@cloudscape-design/components/space-between";
 import StatusIndicator, { type StatusIndicatorProps } from "@cloudscape-design/components/status-indicator";
 import type { JSX } from "react";
 import type { Issue, Severity } from "../../../core/types";
-import { useBuilderStore } from "../../../state/builder";
+import { isRevealed, useBuilderStore } from "../../../state/builder";
 import { focusIdFor, splitPending, todoText } from "../issues";
 
 /**
@@ -26,8 +26,8 @@ const JUMP_AFTER_CLOSE_MS = 50;
 /** Issues split into to-dos (errors on fields the user has not reached yet) and the ones shown as they are. */
 export function usePendingSplit(issues: Issue[]): { pending: Issue[]; shown: Issue[] } {
   const touched = useBuilderStore((s) => s.touched);
-  const revealAll = useBuilderStore((s) => s.revealErrors);
-  return splitPending(issues, (id) => revealAll || touched[id] === true);
+  const revealErrors = useBuilderStore((s) => s.revealErrors);
+  return splitPending(issues, (id) => isRevealed({ revealErrors, touched }, id));
 }
 
 function Rows(props: {
@@ -74,7 +74,8 @@ export function IssuesList(props: { issues: Issue[]; severities?: Severity[]; on
     <SpaceBetween size="xs">
       {pending.length > 0 && (
         <div>
-          <Box variant="h4">To do</Box>
+          {/* A label, not a heading: the list sits under different heading levels in the panel and the Review step. */}
+          <Box fontWeight="bold">To do</Box>
           <Rows issues={pending} type={() => "pending"} text={(i) => todoText(i, model)} onJump={props.onJump} />
         </div>
       )}

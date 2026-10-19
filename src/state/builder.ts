@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { createEmptyModel, type Grant, type RoleModel, type Trust } from "../core/model/model";
 import * as ops from "./model-ops";
 import type { ModelFields } from "./model-ops";
+import { filledFieldIds, withoutGrant, withoutRemovedRows, withoutTrustFields, type Touched } from "./touched";
 
 export type Step = 0 | 1 | 2;
 export type EditorMode = "sentences" | "grid";
@@ -13,12 +14,15 @@ export interface BuilderState {
   focusTarget: string | null;
   shareStatus: "ok" | "too-large";
   /**
-   * When true, every field shows its error without waiting for a blur (restored roles, blocked export, Jump to).
-   * Adding a grant turns it off: those errors have been shown, and a new blank grant should not start out red.
+   * When true, every field shows its error without waiting for a blur (blocked export, Jump to). Adding a grant
+   * turns it off: those errors have been shown, and a new blank grant should not start out red.
    */
   revealErrors: boolean;
-  /** Fields the user has left or jumped to, keyed by the focus id `focusIdFor` gives their issues. */
-  touched: Record<string, true>;
+  /**
+   * Fields the user has left or jumped to, keyed by the focus id `focusIdFor` gives their issues. A loaded role
+   * starts with the fields that hold a value.
+   */
+  touched: Touched;
   setFields(p: ModelFields): void;
   setTrust(t: Trust): void;
   addGrant(g: Grant): void;
@@ -32,18 +36,13 @@ export interface BuilderState {
   setShareStatus(s: BuilderState["shareStatus"]): void;
   revealAllErrors(): void;
   touch(id: string): void;
-  /** Whether a field's errors show: the field was touched, or every error is revealed. */
-  isRevealed(id: string): boolean;
 }
 
-const TRUST_FIELD = "field:trust.";
+/** Whether a field's errors show: the field was touched, or every error is revealed. Selectors pass their own state. */
+export const isRevealed = (s: Pick<BuilderState, "revealErrors" | "touched">, id: string): boolean =>
+  s.revealErrors || s.touched[id] === true;
 
-/** Touched flags without the trust fields, which a new trust kind replaces. */
-function withoutTrustFields(touched: Record<string, true>): Record<string, true> {
-  return Object.fromEntries(Object.entries(touched).filter(([id]) => !id.startsWith(TRUST_FIELD))) as Record<string, true>;
-}
-
-export const useBuilderStore = create<BuilderState>((set, get) => ({
+export const useBuilderStore = create<BuilderState>((set) => ({
   model: createEmptyModel(),
   step: 0,
   editor: "sentences",
@@ -51,7 +50,13 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
   shareStatus: "ok",
   revealErrors: false,
   touched: {},
-  setFields: (p) => set((s) => ({ model: ops.setFields(s.model, p) })),
+  setFields: (p) =>
+    set((s) => ({
+      model: ops.setFields(s.model, p),
+      touched: p.managedPolicyArns
+        ? withoutRemovedRows(s.touched, s.model.managedPolicyArns, p.managedPolicyArns)
+        : s.touched,
+    })),
   setTrust: (t) =>
     set((s) => ({
       model: ops.setTrust(s.model, t),
@@ -63,8 +68,9 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
     set((s) => ({
       model: ops.removeGrant(s.model, id),
       focusTarget: s.focusTarget === "grant:" + id ? null : s.focusTarget,
+      touched: withoutGrant(s.touched, id),
     })),
-  replaceModel: (m) => set({ model: m, revealErrors: true, touched: {} }),
+  replaceModel: (m) => set({ model: m, revealErrors: false, touched: filledFieldIds(m) }),
   reset: () =>
     set({
       model: createEmptyModel(),
@@ -82,5 +88,4 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
   setShareStatus: (shareStatus) => set({ shareStatus }),
   revealAllErrors: () => set({ revealErrors: true }),
   touch: (id) => set((s) => (s.touched[id] ? s : { touched: { ...s.touched, [id]: true } })),
-  isRevealed: (id) => get().revealErrors || get().touched[id] === true,
 }));

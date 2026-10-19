@@ -30,3 +30,13 @@ describe("StatusLine to-dos", () => {
     expect(container.querySelector("[class*=awsui_status-pending]")).toBeNull();
   });
 });
+
+describe("StatusLine zero errors", () => {
+  it("is neutral while there are to-dos, and a success only when nothing is left", () => {
+    const { container, rerender } = render(<StatusLine issues={[]} pending={2} onActivate={vi.fn()} />);
+    expect(container.querySelector("[class*=awsui_status-stopped]")).toHaveTextContent("0 errors");
+    expect(container.querySelector("[class*=awsui_status-success]")).toBeNull();
+    rerender(<StatusLine issues={[]} onActivate={vi.fn()} />);
+    expect(container.querySelector("[class*=awsui_status-success]")).toHaveTextContent("0 errors");
+  });
+});

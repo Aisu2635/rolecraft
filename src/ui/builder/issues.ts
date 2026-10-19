@@ -38,6 +38,19 @@ export function focusIdFor(issue: Issue): { step: Step; target: string } | null 
   return null;
 }
 
+/** Grant errors that no field of the grant can fix (a broken link, an unknown service): never a to-do. */
+const NO_FIELD = new Set([
+  "E_INTERNAL",
+  "E_UNKNOWN_SERVICE",
+  "E_UNKNOWN_MODULE",
+  "E_MODULE_SERVICE",
+  "E_MODULE_PRESET",
+  "E_MODULE_SCOPE",
+  "E_MODULE_SCOPE_GENERIC",
+  "E_PRESET_WITHOUT_MODULE",
+  "E_UNKNOWN_ACTION",
+]);
+
 /**
  * Errors on fields the user has not reached yet are pending: a "to do", not a red error. An error is pending when
  * it maps to a field and that field is not revealed. Warnings, infos and errors with no field are never pending.
@@ -46,7 +59,7 @@ export function splitPending(issues: Issue[], revealed: (id: string) => boolean)
   const pending: Issue[] = [];
   const shown: Issue[] = [];
   for (const issue of issues) {
-    const to = issue.severity === "error" ? focusIdFor(issue) : null;
+    const to = issue.severity === "error" && !NO_FIELD.has(issue.id) ? focusIdFor(issue) : null;
     (to && !revealed(to.target) ? pending : shown).push(issue);
   }
   return { pending, shown };
@@ -72,6 +85,7 @@ const TODO_TEXT: Record<string, string> = {
   "E_MODULE_DATA data.queueName": "Enter the queue name",
   "E_MODULE_DATA data.selector.key": "Enter the tag key",
   "E_MODULE_DATA data.selector.ids[]": "Enter the instance ID",
+  E_S3_PREFIX_EMPTY: "Enter the folder name, or remove the row",
 };
 
 /** The value the issue is about: under the grant's scope for grant issues, else under the model. */

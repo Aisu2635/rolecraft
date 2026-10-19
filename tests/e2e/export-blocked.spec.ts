@@ -46,3 +46,21 @@ test("a new S3 grant is a to-do, not an error, until Export reveals it", async (
   await expect(page.getByRole("group", { name: "Amazon S3 permission" }).getByRole("textbox", { name: "Bucket" })).toBeFocused();
   await expect(output.getByText("To do", { exact: true })).toHaveCount(0);
 });
+
+test("in the Grid, a new S3 grant shows no error anywhere on the page", async ({ page }) => {
+  await page.goto("/builder");
+  await addService(page, "s3", "Amazon S3");
+  await page.getByRole("toolbar", { name: "Editor" }).getByRole("button", { name: "Grid", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Amazon S3" }).getByText("Enter the bucket name")).toBeVisible();
+  await expect(page.locator("[class*=awsui_status-error]")).toHaveCount(0);
+});
+
+test("reloading the builder after adding S3 keeps the empty bucket a to-do", async ({ page }) => {
+  await page.goto("/builder");
+  await addService(page, "s3", "Amazon S3");
+  await expect.poll(() => page.evaluate(() => window.location.hash)).toMatch(/^#s=/);
+  await page.reload();
+  const output = page.getByRole("region", { name: "Generated output" });
+  await expect(output.getByText("Enter the bucket name")).toBeVisible();
+  await expect(page.locator("[class*=awsui_status-error]")).toHaveCount(0);
+});

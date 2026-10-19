@@ -6,7 +6,7 @@ import RadioGroup from "@cloudscape-design/components/radio-group";
 import SpaceBetween from "@cloudscape-design/components/space-between";
 import { useCallback, type JSX, type ReactNode } from "react";
 import { validateModelValues } from "../../../core/validate/values";
-import { useBuilderStore } from "../../../state/builder";
+import { isRevealed, useBuilderStore } from "../../../state/builder";
 import { useDerived } from "../../../state/derive";
 import { errorTextAt } from "../issues";
 import { IssuesList } from "../output/IssuesList";
@@ -25,7 +25,7 @@ function Field(props: {
 }): JSX.Element {
   const id = "field:" + props.path;
   const touchId = useBuilderStore((s) => s.touch);
-  const revealed = useBuilderStore((s) => s.isRevealed(id));
+  const revealed = useBuilderStore((s) => isRevealed(s, id));
   const touch = useCallback(() => touchId(id), [touchId, id]);
   const ref = useFocusTarget<HTMLDivElement>(id, touch);
   return (

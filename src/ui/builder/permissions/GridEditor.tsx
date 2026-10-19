@@ -15,7 +15,8 @@ import { ACCESS_LEVELS, type AccessLevel, type Issue, type SlimService } from ".
 import { useBuilderStore } from "../../../state/builder";
 import { useDerived } from "../../../state/derive";
 import { moduleFor, newGrantFor } from "../../../state/model-ops";
-import { grantIssues, shownOnRow } from "../issues";
+import { grantIssues, shownOnRow, todoText } from "../issues";
+import { usePendingSplit } from "../output/IssuesList";
 import { ScopeEditor } from "../scope/ScopeEditor";
 import { ActionPicker } from "./ActionPicker";
 import { ServiceUnavailable, useServiceInfo } from "./ServiceStatus";
@@ -149,7 +150,9 @@ function ServiceContainer(props: {
   const { svc, name } = info;
   const addGrant = useBuilderStore((s) => s.addGrant);
   const removeGrant = useBuilderStore((s) => s.removeGrant);
-  const shown = grants.flatMap((g) => grantIssues(issues, g.id)).filter(shownOnRow);
+  const model = useBuilderStore((s) => s.model);
+  // Errors on a grant the user has not touched yet are to-dos, as in the output panel.
+  const { pending, shown } = usePendingSplit(grants.flatMap((g) => grantIssues(issues, g.id)).filter(shownOnRow));
   return (
     <section aria-label={name}>
       <Container
@@ -174,6 +177,11 @@ function ServiceContainer(props: {
               wrapLines
               columnDefinitions={columnsFor(svc, name, props.onEdit)}
             />
+            {pending.map((i, n) => (
+              <StatusIndicator key={"p" + n} type="pending">
+                {todoText(i, model)}
+              </StatusIndicator>
+            ))}
             {shown.map((i, n) => (
               <StatusIndicator key={n} type={i.severity}>
                 {i.message}

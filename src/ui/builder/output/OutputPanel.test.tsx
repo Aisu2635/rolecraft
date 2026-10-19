@@ -288,3 +288,31 @@ describe("OutputPanel: a calm first run", () => {
     expect(screen.getByRole("button", { name: "Copy" })).toBeDisabled();
   });
 });
+
+describe("OutputPanel: loading a role", () => {
+  const panel = () => screen.getByTestId("panel");
+  const load = (bucket: string, cat: Cat) =>
+    act(() =>
+      store().replaceModel({
+        ...store().model,
+        grants: [{ ...grantFor(cat, "s3", "g1"), scope: { type: "module", data: { bucket, prefixes: [""] } } }],
+      }),
+    );
+
+  it("keeps a loaded empty bucket a to-do", async () => {
+    const cat = await readyCatalog("s3");
+    load("", cat);
+    render(withCatalog(cat, <div data-testid="panel"><OutputPanel /></div>));
+    expect(panel().querySelector("[class*=awsui_status-error]")).toBeNull();
+    expect(within(panel()).getByText("Enter the bucket name")).toBeInTheDocument();
+  });
+
+  it("shows a loaded invalid bucket as an error at once", async () => {
+    const cat = await readyCatalog("s3");
+    load("Bad_Bucket", cat);
+    render(withCatalog(cat, <div data-testid="panel"><OutputPanel /></div>));
+    expect(within(panel()).queryByText("To do")).toBeNull();
+    expect(panel().querySelector("[class*=awsui_status-error]")).not.toBeNull();
+    expect(within(panel()).getByText(/not a valid S3 bucket name/)).toBeInTheDocument();
+  });
+});

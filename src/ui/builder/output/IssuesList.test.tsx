@@ -102,3 +102,12 @@ describe("IssuesList to-dos", () => {
     expect(container.querySelector("[class*=awsui_status-error]")).toHaveTextContent("Bucket is bad");
   });
 });
+
+describe("IssuesList To do label", () => {
+  it("is a label, not a heading, so it never skips a heading level in the panel or the Review step", () => {
+    useBuilderStore.getState().setTrust({ kind: "account", accountId: "" });
+    render(<IssuesList issues={[{ id: "V_ACCOUNT_ID", severity: "error", message: "m", path: "trust.accountId" }]} />);
+    expect(screen.getByText("To do")).toBeInTheDocument();
+    expect(screen.queryByRole("heading")).toBeNull();
+  });
+});

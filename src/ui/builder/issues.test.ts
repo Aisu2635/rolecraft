@@ -139,3 +139,31 @@ describe("todoText", () => {
     expect(todoText(i({ id: "E_MODULE_DATA", grantId: "g", path: "data.other", message: "m" }), withGrant("s3", {}))).toBe("m");
   });
 });
+
+describe("splitPending: grant errors with no field", () => {
+  it("never holds back an error that no field can fix", () => {
+    const ids = ["E_INTERNAL", "E_UNKNOWN_SERVICE", "E_UNKNOWN_MODULE", "E_MODULE_SERVICE", "E_UNKNOWN_ACTION"];
+    const list = ids.map((id) => i({ id, grantId: "g1" }));
+    expect(splitPending(list, () => false).pending).toEqual([]);
+  });
+});
+
+describe("todoText: S3 folders", () => {
+  it("asks for an empty folder to be filled or removed", () => {
+    const m: RoleModel = {
+      ...createEmptyModel(),
+      grants: [
+        {
+          id: "g",
+          service: "s3",
+          module: "s3",
+          scope: { type: "module", data: { bucket: "b", prefixes: ["", ""] } },
+          access: { type: "preset", preset: "p" },
+        },
+      ],
+    };
+    expect(todoText(i({ id: "E_S3_PREFIX_EMPTY", grantId: "g", path: "data.prefixes[1]" }), m)).toBe(
+      "Enter the folder name, or remove the row",
+    );
+  });
+});

@@ -8,7 +8,7 @@ import SpaceBetween from "@cloudscape-design/components/space-between";
 import Tiles from "@cloudscape-design/components/tiles";
 import { useCallback, type JSX, type ReactNode } from "react";
 import type { Trust } from "../../../core/model/model";
-import { useBuilderStore } from "../../../state/builder";
+import { isRevealed, useBuilderStore } from "../../../state/builder";
 import { useDerived } from "../../../state/derive";
 import { defaultTrust } from "../../../state/model-ops";
 import { errorTextAt } from "../issues";
@@ -76,7 +76,7 @@ function Field(props: {
 }): JSX.Element {
   const id = "field:" + props.path;
   const touch = useBuilderStore((s) => s.touch);
-  const revealed = useBuilderStore((s) => s.isRevealed(id));
+  const revealed = useBuilderStore((s) => isRevealed(s, id));
   const reveal = useCallback(() => touch(id), [touch, id]);
   const ref = useFocusTarget<HTMLDivElement>(id, reveal);
   return (

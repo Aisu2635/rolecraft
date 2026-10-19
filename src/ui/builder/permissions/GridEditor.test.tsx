@@ -214,3 +214,15 @@ describe("Sentences and Grid", () => {
     expect(store().model).toBe(original);
   });
 });
+
+describe("GridEditor to-dos", () => {
+  it("lists a new grant's empty field as a to-do, not an error, until the grant is touched", async () => {
+    await setup({ ...S3, scope: { type: "module", data: { bucket: "", prefixes: [""] } } });
+    const s3 = region("Amazon S3");
+    expect(s3.querySelector("[class*=awsui_status-error]")).toBeNull();
+    expect(s3.querySelector("[class*=awsui_status-pending]")).toHaveTextContent("Enter the bucket name");
+    act(() => store().touch("grant:s3a"));
+    expect(s3.querySelector("[class*=awsui_status-pending]")).toBeNull();
+    expect(s3.querySelector("[class*=awsui_status-error]")).toHaveTextContent(/not a valid S3 bucket name/);
+  });
+});

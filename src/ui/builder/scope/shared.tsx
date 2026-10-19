@@ -4,7 +4,7 @@ import Input from "@cloudscape-design/components/input";
 import SpaceBetween from "@cloudscape-design/components/space-between";
 import { createContext, useCallback, useContext, type JSX, type ReactNode } from "react";
 import type { Issue } from "../../../core/types";
-import { useBuilderStore } from "../../../state/builder";
+import { isRevealed, useBuilderStore } from "../../../state/builder";
 import { errorTextAt } from "../issues";
 import { useFocusTarget } from "../useFocusTarget";
 
@@ -28,7 +28,7 @@ export function ScopeField(props: {
 }): JSX.Element {
   const id = useContext(ScopeTouchId);
   const touch = useBuilderStore((s) => s.touch);
-  const revealed = useBuilderStore((s) => s.isRevealed(id));
+  const revealed = useBuilderStore((s) => isRevealed(s, id));
   return (
     <div onBlur={() => touch(id)}>
       <FormField label={props.label} description={props.description} errorText={revealed ? props.error : undefined}>
@@ -51,7 +51,7 @@ function ListItem(props: {
   const scopeId = useContext(ScopeTouchId);
   const id = props.focusId ?? scopeId;
   const touch = useBuilderStore((s) => s.touch);
-  const revealed = useBuilderStore((s) => s.isRevealed(id));
+  const revealed = useBuilderStore((s) => isRevealed(s, id));
   const onFocus = useCallback(() => touch(id), [touch, id]);
   const ref = useFocusTarget<HTMLDivElement>(props.focusId ?? "", onFocus);
   return (
