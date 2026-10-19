@@ -42,15 +42,16 @@ const hasStar = (resource: unknown): boolean => strs(resource).includes("*");
 const WILDCARD_ROLE_NAME = /^arn:[^:]*:iam::[^:]*:role\/[*?]+$/;
 /** Unrelated role names (one with a path): a resource matching all of them matches any role in the account. */
 const PASSROLE_PROBES = ["q", "Z9/7"];
-const IAM_PREFIX = /^arn:([^:]*):iam::(\$\{[^}]*\}|[^:]*):/;
+const IAM_PREFIX = /^arn:(\$\{[^}]*\}|[^:]*):iam::(\$\{[^}]*\}|[^:]*):/;
+/** A value the segment itself matches: "*" matches nothing, "?" any one character. */
+const sampleOf = (seg: string): string => seg.replace(/\*/g, "").replace(/\?/g, "0");
 
 /** Whether the resource lets iam:PassRole pass (effectively) any role. */
 function isBroadPassRole(r: string): boolean {
   if (WILDCARD_ROLE_NAME.test(r)) return true;
   const m = IAM_PREFIX.exec(r);
-  const literal = (x: string | undefined, fallback: string): string => (x && !/[*?]/.test(x) ? x : fallback);
-  const partition = literal(m?.[1], "aws");
-  const account = literal(m?.[2], "123456789012");
+  const partition = m ? sampleOf(m[1] as string) : "aws";
+  const account = m ? sampleOf(m[2] as string) : "123456789012";
   return PASSROLE_PROBES.every((name) => globMatch(r, `arn:${partition}:iam::${account}:role/${name}`));
 }
 const broadPassRole = (resource: unknown): string[] => strs(resource).filter(isBroadPassRole);

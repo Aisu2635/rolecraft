@@ -288,6 +288,10 @@ describe("L_PASSROLE_STAR broad resources", () => {
       "arn:aws:iam::123456789012:role/*",
       "arn:aws-cn:iam::*:role/*",
       "arn:aws:iam::${aws:PrincipalAccount}:role/*",
+      "arn:${aws:partition}:iam::${aws:PrincipalAccount}:role*",
+      "arn:aws:iam::9*:*",
+      "arn:aws-*:iam::*:*",
+      "arn:aws:iam::5???????????:*",
     ]) {
       expect(ids(run(doc(allow("iam:PassRole", r))))).toContain("L_PASSROLE_STAR");
     }
@@ -298,6 +302,7 @@ describe("L_PASSROLE_STAR broad resources", () => {
       "arn:aws:iam::123456789012:role/app-*",
       "arn:aws:iam::123456789012:role/x",
       "arn:aws:iam::123456789012:role/q*",
+      "arn:aws:iam::*:role/app-*",
       "arn:aws:iam::123456789012:user/*",
     ]) {
       expect(ids(run(doc(allow("iam:PassRole", r))))).not.toContain("L_PASSROLE_STAR");
