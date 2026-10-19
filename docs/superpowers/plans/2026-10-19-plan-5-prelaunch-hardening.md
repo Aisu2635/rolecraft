@@ -309,3 +309,25 @@ The fields themselves already wait for blur or reveal, but the output panel's Is
 - [ ] **Step 3: Implement.** No new dependency.
 - [ ] **Step 4: Gates including e2e.** All existing specs must still pass, with the flag preset in their fixtures.
 - [ ] **Step 5: Commit** (`feat(ui): first-run guided tour`).
+
+### Task 7 addendum (2026-10-20): weekly AWS data sync workflow
+
+Task 6 found that no workflow runs `npm run sync-data`, although the spec relies on weekly fresh data. Task 7 adds it.
+
+**Files:**
+- Create: `.github/workflows/sync-aws-data.yml`
+
+- [ ] **Step S1: Workflow.**
+  - **Triggers:** `schedule: cron "17 3 * * 1"` (Mondays 03:17 UTC) and `workflow_dispatch`.
+  - **Permissions:** `contents: write`, `pull-requests: write`.
+  - **Steps:**
+    1. Checkout.
+    2. Node 22 with npm cache, then `npm ci`.
+    3. `npm run sync-data`.
+    4. If `git status --porcelain public/data` is empty, stop with a notice ("AWS data unchanged").
+    5. Otherwise run `npm test` and `npm run build`, so a data change that breaks the engine fails the job instead of opening a PR.
+    6. Commit to branch `chore/aws-data-sync` (force-updated each week).
+    7. Open or update one PR to `main`, titled "chore(data): weekly AWS data sync (<date>)". The body lists the services added, removed and changed (from `git diff --stat public/data`). Use the `gh` CLI with `GITHUB_TOKEN`; no third-party action is needed.
+  - **No direct push to `main`.** Merging deploys production, so the owner merges.
+  - Note in the PR body: PRs opened with `GITHUB_TOKEN` don't trigger other workflows. Say "CI for this PR runs when you push or re-run; the sync job already ran tests and build."
+- [ ] **Step S2: Verify.** Push, run it once with `gh workflow run sync-aws-data.yml --ref feat/plan-5-templates`, watch it, and report the outcome: either "unchanged", or the PR URL. If it opens a PR, leave it open for the owner.
