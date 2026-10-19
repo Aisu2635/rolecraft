@@ -229,4 +229,21 @@ describe("SentenceEditor", () => {
     expect(screen.getByLabelText("Bucket")).toHaveFocus();
     expect(store().focusTarget).toBeNull();
   });
+
+  it("notes on the row, as info, why a new generic grant without ARNs leaves its resource-scoped actions out", async () => {
+    const cat = await readyCatalog("textract");
+    store().addGrant(grantFor(cat, "textract"));
+    render(withCatalog(cat, <SentenceEditor />));
+    const notes = screen.getAllByText(/was left out because none of the ARNs match/);
+    expect(notes.length).toBeGreaterThan(0);
+    expect(notes[0]!.closest('[class*="status-info"]')).not.toBeNull();
+  });
+
+  it("notes on the row, as info, an S3 folder that the whole bucket already covers", async () => {
+    const cat = await readyCatalog("s3");
+    store().addGrant(moduleGrant("g1", "s3", "list-read", { bucket: "data-lake", prefixes: ["reports/", "/"] }));
+    render(withCatalog(cat, <SentenceEditor />));
+    const note = screen.getByText(/the folder reports\/ is already covered and left out/);
+    expect(note.closest('[class*="status-info"]')).not.toBeNull();
+  });
 });

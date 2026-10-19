@@ -15,7 +15,7 @@ import { ACCESS_LEVELS, type AccessLevel, type Issue, type SlimService } from ".
 import { useBuilderStore } from "../../../state/builder";
 import { useDerived } from "../../../state/derive";
 import { moduleFor, newGrantFor } from "../../../state/model-ops";
-import { grantIssues } from "../issues";
+import { grantIssues, shownOnRow } from "../issues";
 import { ScopeEditor } from "../scope/ScopeEditor";
 import { ActionPicker } from "./ActionPicker";
 import { ServiceUnavailable, useServiceInfo } from "./ServiceStatus";
@@ -149,7 +149,7 @@ function ServiceContainer(props: {
   const { svc, name } = info;
   const addGrant = useBuilderStore((s) => s.addGrant);
   const removeGrant = useBuilderStore((s) => s.removeGrant);
-  const shown = grants.flatMap((g) => grantIssues(issues, g.id)).filter((i) => i.severity !== "info");
+  const shown = grants.flatMap((g) => grantIssues(issues, g.id)).filter(shownOnRow);
   return (
     <section aria-label={name}>
       <Container
@@ -175,7 +175,7 @@ function ServiceContainer(props: {
               columnDefinitions={columnsFor(svc, name, props.onEdit)}
             />
             {shown.map((i, n) => (
-              <StatusIndicator key={n} type={i.severity === "error" ? "error" : "warning"}>
+              <StatusIndicator key={n} type={i.severity}>
                 {i.message}
               </StatusIndicator>
             ))}

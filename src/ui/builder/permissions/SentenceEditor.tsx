@@ -9,7 +9,7 @@ import type { Grant } from "../../../core/model/model";
 import type { Issue, SlimService } from "../../../core/types";
 import { useBuilderStore } from "../../../state/builder";
 import { useDerived } from "../../../state/derive";
-import { grantIssues } from "../issues";
+import { grantIssues, shownOnRow } from "../issues";
 import { ScopeEditor } from "../scope/ScopeEditor";
 import { SERVICE_SEARCH_ID } from "../sidebar/ServiceSidebar";
 import { useFocusTarget } from "../useFocusTarget";
@@ -33,7 +33,7 @@ function GrantEditor(props: {
   const updateGrant = useBuilderStore((s) => s.updateGrant);
   const mine = grantIssues(issues, grant.id);
   // Issues with a path appear on their own field; the row lists only the ones no field can show.
-  const shown = mine.filter((i) => i.severity !== "info" && i.path === undefined);
+  const shown = mine.filter((i) => shownOnRow(i) && i.path === undefined);
   const hasErrors = mine.some((i) => i.severity === "error");
   // Open while the grant has errors, then stay open so the editor does not collapse as the last error is fixed.
   const [sawErrors, setSawErrors] = useState(false);
@@ -70,7 +70,7 @@ function GrantEditor(props: {
         <ul style={{ margin: 0, paddingLeft: 0, listStyle: "none" }}>
           {shown.map((i, n) => (
             <li key={n}>
-              <StatusIndicator type={i.severity === "error" ? "error" : "warning"}>{i.message}</StatusIndicator>
+              <StatusIndicator type={i.severity}>{i.message}</StatusIndicator>
             </li>
           ))}
         </ul>
