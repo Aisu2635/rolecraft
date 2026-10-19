@@ -9,7 +9,7 @@ export const STEP_LABELS = [
 
 export function StepHeader(props: { step: Step; onSelect(s: Step): void }) {
   return (
-    <nav aria-label="Builder steps" className="rc-steps">
+    <nav aria-label="Builder steps" className="rc-steps" data-tour="steps">
       {STEP_LABELS.map((label, i) => {
         const state =
           i < props.step ? "done" : i === props.step ? "cur" : "todo";

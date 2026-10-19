@@ -33,10 +33,10 @@ export function BuilderWorkspace(props: {
   }, [step, target]);
   return (
     <div className="rc-ws">
-      <aside className="rc-col rc-side" aria-label="Services and templates">
+      <aside className="rc-col rc-side" aria-label="Services and templates" data-tour="sidebar">
         {props.sidebar}
       </aside>
-      <main className="rc-col rc-main">
+      <main className="rc-col rc-main" data-tour="workspace">
         {props.banner}
         <StepHeader step={step} onSelect={setStep} />
         <div className="rc-step-body">
@@ -61,7 +61,7 @@ export function BuilderWorkspace(props: {
           )}
         </div>
       </main>
-      <section className="rc-col rc-out" aria-label="Generated output">
+      <section className="rc-col rc-out" aria-label="Generated output" data-tour="output">
         {props.output}
       </section>
     </div>

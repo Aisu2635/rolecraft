@@ -11,6 +11,7 @@ import { BuilderWorkspace } from "./BuilderWorkspace";
 import { PermissionsStep } from "./permissions/PermissionsStep";
 import { TrustStep } from "./trust/TrustStep";
 import { ServiceSidebar } from "./sidebar/ServiceSidebar";
+import { Tour } from "./tour/Tour";
 
 const INVALID_LINK =
   "This share link couldn't be opened. It may be incomplete or from a newer version of RoleCraft. Starting with an empty role.";
@@ -51,6 +52,7 @@ export function Builder() {
           />
         }
       />
+      <Tour />
     </DerivedProvider>
   );
 }

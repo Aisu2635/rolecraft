@@ -162,3 +162,7 @@ a { color: var(--rc-link); }
 .rc-st.cur { color: var(--rc-link); font-weight: 700; }
 .rc-st.cur .c { border-color: var(--rc-link); color: var(--rc-link); }
 @media (max-width: 1279px) { .rc-ws { grid-template-columns: 200px minmax(0, 1fr) 340px; } .rc-main { padding: 16px; } }
+
+/* first-run tour: the cut-out and the card glide between steps */
+.rc-tour-anim { transition: left 0.2s ease, top 0.2s ease, width 0.2s ease, height 0.2s ease; }
+@media (prefers-reduced-motion: reduce) { .rc-tour-anim { transition: none; } }

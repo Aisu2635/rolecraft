@@ -108,7 +108,7 @@ export function OutputPanel(props: OutputPanelProps = {}): JSX.Element {
         onActivate={() => issuesRef.current?.scrollIntoView?.({ block: "start", behavior: "smooth" })}
       />
       <SizeMeter size={result.sizes.policy} limit={policyLimit(model.policyMode, model.trust)} />
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+      <div data-tour="actions" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
         <Button iconName="copy" disabled={copyText === ""} onClick={() => void copy(copyText)}>
           Copy
         </Button>

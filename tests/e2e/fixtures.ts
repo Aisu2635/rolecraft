@@ -17,8 +17,22 @@ function trackErrors(page: Page, errors: string[]): void {
 /**
  * Every spec imports `test` from here: a test fails if any page of its context logged a console error or threw,
  * including pages opened later with `context.newPage()`.
+ * The first-run tour is marked as seen, so it does not cover the builder; `test.use({ tourSeen: false })` opts out.
  */
-export const test = base.extend({
+export const test = base.extend<{ tourSeen: boolean }>({
+  tourSeen: [true, { option: true }],
+  context: async ({ context, tourSeen }, use) => {
+    // Pages opened with context.newPage() start on about:blank, where localStorage throws.
+    if (tourSeen)
+      await context.addInitScript(() => {
+        try {
+          localStorage.setItem("rolecraft.tour.v1", "seen");
+        } catch {
+          // not an app page
+        }
+      });
+    await use(context);
+  },
   page: async ({ page, context }, use) => {
     const errors: string[] = [];
     trackErrors(page, errors);
