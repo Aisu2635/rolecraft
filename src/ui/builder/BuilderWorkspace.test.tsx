@@ -114,3 +114,31 @@ describe("BuilderWorkspace focus targets", () => {
     expect(useBuilderStore.getState().focusTarget).toBeNull();
   });
 });
+
+describe("BuilderWorkspace step focus", () => {
+  it("moves focus to the new step's heading on a step change, not on first render", () => {
+    ui();
+    expect(document.body).toHaveFocus();
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    expect(screen.getByRole("heading", { level: 2, name: "Permissions" })).toHaveFocus();
+    fireEvent.click(screen.getByRole("button", { name: /Review and export/ }));
+    expect(screen.getByRole("heading", { level: 2, name: "Review and export" })).toHaveFocus();
+  });
+
+  it("leaves focus to a pending focus target", () => {
+    function Claimer() {
+      const ref = useFocusTarget<HTMLDivElement>("field:x");
+      return (
+        <div ref={ref}>
+          <input aria-label="x" />
+        </div>
+      );
+    }
+    render(<BuilderWorkspace sidebar={null} steps={[<p key="0">t</p>, <p key="1">p</p>, <Claimer key="2" />]} output={null} />);
+    act(() => {
+      useBuilderStore.getState().setStep(2);
+      useBuilderStore.getState().focus("field:x");
+    });
+    expect(screen.getByLabelText("x")).toHaveFocus();
+  });
+});
