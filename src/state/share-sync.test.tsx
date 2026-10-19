@@ -237,4 +237,24 @@ describe("useShareSync", () => {
     expect(store().model).toEqual(m);
     expect(window.location.hash).toBe("#s=" + encodeModel(m));
   });
+  it("keeps an invalid link and its notice through StrictMode double-mounting, until the user edits", () => {
+    vi.useFakeTimers();
+    window.history.replaceState(null, "", "/builder#s=garbage");
+    let invalid: boolean | undefined;
+    function Probe() {
+      invalid = useShareSync().invalidLink;
+      return null;
+    }
+    render(
+      <StrictMode>
+        <Probe />
+      </StrictMode>,
+    );
+    act(() => void vi.advanceTimersByTime(1000));
+    expect(invalid).toBe(true);
+    expect(window.location.hash).toBe("#s=garbage");
+    act(() => store().setFields({ name: "edited" }));
+    act(() => void vi.advanceTimersByTime(300));
+    expect(window.location.hash).toBe("#s=" + encodeModel(store().model));
+  });
 });

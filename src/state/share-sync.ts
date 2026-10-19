@@ -42,6 +42,8 @@ export function useShareSync(): { invalidLink: boolean; dismiss(): void } {
     let timer: ReturnType<typeof setTimeout> | undefined;
     // The hash we wrote ourselves, so the matching hashchange is not mistaken for a pasted link.
     let written: string | null = null;
+    // True while load() puts a link's role into the store.
+    let loading = false;
 
     const write = (): void => {
       timer = undefined;
@@ -60,13 +62,23 @@ export function useShareSync(): { invalidLink: boolean; dismiss(): void } {
       const { model, invalid } = initialModel(hash);
       written = null;
       setInvalidLink(invalid);
+      // The link's role came from the URL, so it is not written back: an invalid "#s=" would become the empty role's
+      // hash (and in StrictMode the remount would read that valid hash and drop the notice). The link stays as it is
+      // until the user edits. A write still pending from before the link was pasted is dropped for the same reason.
+      clearTimeout(timer);
+      timer = undefined;
+      loading = true;
       const s = useBuilderStore.getState();
-      s.replaceModel(model);
+      try {
+        s.replaceModel(model);
+      } finally {
+        loading = false;
+      }
       s.setStep(model.grants.length > 0 ? 1 : 0);
     };
 
     const unsubscribe = useBuilderStore.subscribe((s, prev) => {
-      if (s.model !== prev.model) schedule();
+      if (s.model !== prev.model && !loading) schedule();
     });
     const onHashChange = (): void => {
       if (window.location.hash !== written) load(window.location.hash);
