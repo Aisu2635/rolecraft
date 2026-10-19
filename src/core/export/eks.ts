@@ -15,7 +15,13 @@ export const EKS_COMMENTS: readonly string[] = [
  */
 export const EKS_RETRY = { attempts: 6, seconds: 10 } as const;
 export const EKS_RETRY_MESSAGE = `EKS can reject a new IAM principal for a short while; retrying in ${EKS_RETRY.seconds} seconds`;
-export const EKS_RETRY_FAILED = `EKS still rejects the access entry after ${EKS_RETRY.attempts} attempts (see the error above)`;
+/**
+ * The only create-access-entry failure the scripts retry: EKS not seeing the new principal yet. Matched
+ * case-insensitively against the AWS CLI's stderr (grep -iE in bash, -match in PowerShell); any other error
+ * (no such cluster, access denied) fails at once. Safe inside single quotes in both shells.
+ */
+export const EKS_PROPAGATION_ERROR = "InvalidParameterException.*principal";
+export const EKS_RETRY_FAILED =`EKS still rejects the access entry after ${EKS_RETRY.attempts} attempts (see the error above)`;
 
 /** Shown when the scripts need a region for EKS and none is configured. */
 export const NO_REGION_MESSAGE =

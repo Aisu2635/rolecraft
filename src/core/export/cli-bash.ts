@@ -1,4 +1,4 @@
-import { EKS_COMMENTS, EKS_GROUP_COMMENT, EKS_RETRY, EKS_RETRY_FAILED, EKS_RETRY_MESSAGE, EKS_VIEW_POLICY, NO_REGION_MESSAGE, eksClusters } from "./eks";
+import { EKS_COMMENTS, EKS_GROUP_COMMENT, EKS_PROPAGATION_ERROR, EKS_RETRY, EKS_RETRY_FAILED, EKS_RETRY_MESSAGE, EKS_VIEW_POLICY, NO_REGION_MESSAGE, eksClusters } from "./eks";
 import { stringifyPolicy, type ExportFile } from "./json";
 import { accountMismatch, githubAccount, shQuote, type ExportInput } from "./types";
 
@@ -51,7 +51,10 @@ function eksSteps(clusters: string[], arnVar: string, regionName: string | undef
     const cluster = `--cluster-name=${shQuote(c)} --principal-arn="$${arnVar}"`;
     return [
       `for attempt in ${Array.from({ length: attempts }, (_, i) => i + 1).join(" ")}; do`,
-      `  if aws eks create-access-entry ${cluster}${region} >/dev/null; then break; fi`,
+      `  if err=$(aws eks create-access-entry ${cluster}${region} 2>&1 >/dev/null); then break; fi`,
+      `  printf '%s\\n' "$err" >&2`,
+      "  # Retry only while EKS rejects the new principal; any other error (no such cluster, access denied) is final.",
+      `  if ! grep -qiE ${shQuote(EKS_PROPAGATION_ERROR)} <<<"$err"; then exit 1; fi`,
       `  if [ "$attempt" -eq ${attempts} ]; then`,
       `    echo "${EKS_RETRY_FAILED}." >&2`,
       "    exit 1",

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { REFERENCE_CASES } from "./__fixtures__/cases";
 import { exportCliBash } from "./cli-bash";
+import { EKS_PROPAGATION_ERROR, EKS_RETRY_FAILED, EKS_RETRY_MESSAGE } from "./eks";
 import { stringifyPolicy } from "./json";
 import type { ExportInput } from "./types";
 
@@ -65,10 +66,35 @@ describe("exportCliBash", () => {
   it("eks access entries; region only when set", () => {
     const input = make("eks-kubectl");
     const c = exportCliBash(input).content;
-    expect(c).toContain("  if aws eks create-access-entry --cluster-name='prod' --principal-arn=\"$ROLE_ARN\" >/dev/null; then break; fi\n");
+    expect(c).toContain(
+      "  if err=$(aws eks create-access-entry --cluster-name='prod' --principal-arn=\"$ROLE_ARN\" 2>&1 >/dev/null); then break; fi\n",
+    );
     expect(c).toContain("AmazonEKSViewPolicy --access-scope type=cluster >/dev/null\n");
     const r = exportCliBash({ ...input, model: { ...input.model, region: "eu-west-1" } }).content;
-    expect(r).toContain("--cluster-name='prod' --principal-arn=\"$ROLE_ARN\" --region 'eu-west-1' >/dev/null");
+    expect(r).toContain("--cluster-name='prod' --principal-arn=\"$ROLE_ARN\" --region 'eu-west-1' 2>&1 >/dev/null)");
+  });
+  it("eks retry: only the propagation error is retried, anything else fails at once", () => {
+    const c = exportCliBash(make("eks-kubectl")).content;
+    const loop = c.slice(c.indexOf("for attempt in"), c.indexOf("done\n") + 5);
+    expect(loop).toBe(
+      [
+        "for attempt in 1 2 3 4 5 6; do",
+        "  if err=$(aws eks create-access-entry --cluster-name='prod' --principal-arn=\"$ROLE_ARN\" 2>&1 >/dev/null); then break; fi",
+        "  printf '%s\\n' \"$err\" >&2",
+        "  # Retry only while EKS rejects the new principal; any other error (no such cluster, access denied) is final.",
+        `  if ! grep -qiE '${EKS_PROPAGATION_ERROR}' <<<"$err"; then exit 1; fi`,
+        '  if [ "$attempt" -eq 6 ]; then',
+        `    echo "${EKS_RETRY_FAILED}." >&2`,
+        "    exit 1",
+        "  fi",
+        `  echo "${EKS_RETRY_MESSAGE} ($attempt/6)." >&2`,
+        "  sleep 10",
+        "done",
+        "",
+      ].join("\n"),
+    );
+    // A permanent error exits non-zero before any retry message or sleep.
+    expect(loop.indexOf("then exit 1; fi")).toBeLessThan(loop.indexOf("sleep 10"));
   });
   it("eks under group trust emits a comment, no aws eks calls", () => {
     const input = make("s3-group");
@@ -148,8 +174,9 @@ describe("exportCliBash", () => {
     expect(c.indexOf("wait role-exists")).toBeLessThan(c.indexOf("create-access-entry"));
     expect(c).toContain("authentication mode must be API or API_AND_CONFIG_MAP");
     for (const cmd of ["iam create-role", "iam create-instance-profile", "eks create-access-entry", "eks associate-access-policy"]) {
-      const line = c.split("\n").find((l) => l.replace(/^\s*if /, "").startsWith(`aws ${cmd}`));
-      expect(line?.replace(/; then break; fi$/, "").endsWith(" >/dev/null")).toBe(true);
+      // create-access-entry captures stderr (to tell retryable errors apart) and discards stdout.
+      const line = c.split("\n").find((l) => l.replace(/^\s*if (err=\$\()?/, "").startsWith(`aws ${cmd}`));
+      expect(line?.replace(/\); then break; fi$/, "").endsWith(" >/dev/null")).toBe(true);
     }
   });
   it("eks for principal user looks up the user's ARN", () => {
@@ -176,7 +203,7 @@ describe("exportCliBash", () => {
     expect(c).not.toContain("get-caller-identity");
     expect(c).not.toContain(":user/");
     expect(c).toContain(
-      `aws eks create-access-entry --cluster-name='prod' --principal-arn="$PRINCIPAL_ARN" --region 'eu-west-1' >/dev/null`,
+      `aws eks create-access-entry --cluster-name='prod' --principal-arn="$PRINCIPAL_ARN" --region 'eu-west-1' 2>&1 >/dev/null)`,
     );
     expect(c).toContain("associate-access-policy");
     expect(c).not.toContain("wait role-exists");

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { build, moduleGrant } from "./__fixtures__/cases";
 import { exportCliBash } from "./cli-bash";
 import { exportCliPowerShell } from "./cli-ps";
+import { EKS_PROPAGATION_ERROR } from "./eks";
 import type { ExportInput } from "./types";
 
 // Test-only inputs: IAM allows names starting with "-", which the AWS CLI's argparse reads as an option.
@@ -68,7 +69,8 @@ describe("names starting with '-' reach the AWS CLI as --flag=value", () => {
 describe("EKS access entry retry", () => {
   it("bash retries create-access-entry 6 times, 10 s apart, then fails; associates after", () => {
     for (const c of [exportCliBash(dashRole()).content, exportCliBash(dashUser()).content]) {
-      expect(c).toContain("for attempt in 1 2 3 4 5 6; do\n  if aws eks create-access-entry ");
+      expect(c).toContain("for attempt in 1 2 3 4 5 6; do\n  if err=$(aws eks create-access-entry ");
+      expect(c).toContain(`  if ! grep -qiE '${EKS_PROPAGATION_ERROR}' <<<"$err"; then exit 1; fi\n`);
       expect(c).toContain('  if [ "$attempt" -eq 6 ]; then\n');
       expect(c).toContain("  sleep 10\ndone\naws eks associate-access-policy ");
       expect(c).toContain("    exit 1\n");
@@ -76,8 +78,11 @@ describe("EKS access entry retry", () => {
   });
   it("PowerShell retries with $LASTEXITCODE and throws after 6 attempts", () => {
     for (const c of [exportCliPowerShell(dashRole()).content, exportCliPowerShell(dashUser()).content]) {
-      expect(c).toContain("for ($Attempt = 1; ; $Attempt++) {\n  aws eks create-access-entry ");
-      expect(c).toContain("  if ($LASTEXITCODE -eq 0) { break }\n  if ($Attempt -ge 6) { throw \"aws failed: create-access-entry.");
+      expect(c).toContain("for ($Attempt = 1; ; $Attempt++) {\n  $EksError = & {\n");
+      expect(c).toContain("    aws eks create-access-entry ");
+      expect(c).toContain("  if ($LASTEXITCODE -eq 0) { break }\n");
+      expect(c).toContain(`  if ("$EksError" -notmatch '${EKS_PROPAGATION_ERROR}') { throw "aws failed: create-access-entry. $EksError" }\n`);
+      expect(c).toContain("  if ($Attempt -ge 6) { throw \"aws failed: create-access-entry.");
       expect(c).toContain("  Start-Sleep -Seconds 10\n}\naws eks associate-access-policy ");
     }
   });

@@ -64,7 +64,10 @@ aws iam add-role-to-instance-profile --instance-profile-name="$ROLE_NAME" --role
 aws iam wait role-exists --role-name="$ROLE_NAME"
 ROLE_ARN=$(aws iam get-role --role-name="$ROLE_NAME" --query Role.Arn --output text)
 for attempt in 1 2 3 4 5 6; do
-  if aws eks create-access-entry --cluster-name='prod' --principal-arn="$ROLE_ARN" >/dev/null; then break; fi
+  if err=$(aws eks create-access-entry --cluster-name='prod' --principal-arn="$ROLE_ARN" 2>&1 >/dev/null); then break; fi
+  printf '%s\n' "$err" >&2
+  # Retry only while EKS rejects the new principal; any other error (no such cluster, access denied) is final.
+  if ! grep -qiE 'InvalidParameterException.*principal' <<<"$err"; then exit 1; fi
   if [ "$attempt" -eq 6 ]; then
     echo "EKS still rejects the access entry after 6 attempts (see the error above)." >&2
     exit 1

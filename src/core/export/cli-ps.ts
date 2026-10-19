@@ -1,4 +1,4 @@
-import { EKS_COMMENTS, EKS_GROUP_COMMENT, EKS_RETRY, EKS_RETRY_FAILED, EKS_RETRY_MESSAGE, EKS_VIEW_POLICY, NO_REGION_MESSAGE, eksClusters } from "./eks";
+import { EKS_COMMENTS, EKS_GROUP_COMMENT, EKS_PROPAGATION_ERROR, EKS_RETRY, EKS_RETRY_FAILED, EKS_RETRY_MESSAGE, EKS_VIEW_POLICY, NO_REGION_MESSAGE, eksClusters } from "./eks";
 import { stringifyPolicy, type ExportFile } from "./json";
 import { accountMismatch, githubAccount, psQuote, type ExportInput } from "./types";
 
@@ -69,8 +69,16 @@ function eksSteps(clusters: string[], arnVar: string, regionName: string | undef
     const cluster = `${psQuote(`--cluster-name=${c}`)} "--principal-arn=$${arnVar}"`;
     return [
       "for ($Attempt = 1; ; $Attempt++) {",
-      `  aws eks create-access-entry ${cluster}${region} --no-cli-pager | Out-Null`,
+      // Scoped to the script block: stderr text and a non-zero exit must not stop the script here.
+      "  $EksError = & {",
+      "    $ErrorActionPreference = 'Continue'",
+      "    $PSNativeCommandUseErrorActionPreference = $false",
+      `    aws eks create-access-entry ${cluster}${region} --no-cli-pager 2>&1 | ForEach-Object { "$_" }`,
+      "  }",
       "  if ($LASTEXITCODE -eq 0) { break }",
+      "  # Retry only while EKS rejects the new principal; any other error (no such cluster, access denied) is final.",
+      `  if ("$EksError" -notmatch ${psQuote(EKS_PROPAGATION_ERROR)}) { throw "aws failed: create-access-entry. $EksError" }`,
+      '  Write-Warning "$EksError"',
       `  if ($Attempt -ge ${attempts}) { throw "aws failed: create-access-entry. ${EKS_RETRY_FAILED}." }`,
       `  Write-Output "${EKS_RETRY_MESSAGE} ($Attempt/${attempts})."`,
       `  Start-Sleep -Seconds ${seconds}`,

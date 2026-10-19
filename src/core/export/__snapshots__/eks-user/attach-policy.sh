@@ -37,7 +37,10 @@ aws iam attach-user-policy --user-name="$PRINCIPAL_NAME" --policy-arn="$POLICY_A
 # Change AmazonEKSViewPolicy to AmazonEKSEditPolicy or AmazonEKSClusterAdminPolicy if more access is needed.
 PRINCIPAL_ARN=$(aws iam get-user --user-name="$PRINCIPAL_NAME" --query User.Arn --output text)
 for attempt in 1 2 3 4 5 6; do
-  if aws eks create-access-entry --cluster-name='prod' --principal-arn="$PRINCIPAL_ARN" --region 'eu-west-1' >/dev/null; then break; fi
+  if err=$(aws eks create-access-entry --cluster-name='prod' --principal-arn="$PRINCIPAL_ARN" --region 'eu-west-1' 2>&1 >/dev/null); then break; fi
+  printf '%s\n' "$err" >&2
+  # Retry only while EKS rejects the new principal; any other error (no such cluster, access denied) is final.
+  if ! grep -qiE 'InvalidParameterException.*principal' <<<"$err"; then exit 1; fi
   if [ "$attempt" -eq 6 ]; then
     echo "EKS still rejects the access entry after 6 attempts (see the error above)." >&2
     exit 1

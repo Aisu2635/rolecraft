@@ -38,8 +38,15 @@ if ($LASTEXITCODE -ne 0) { throw "aws failed: attach-user-policy" }
 $PrincipalArn = aws iam get-user "--user-name=$PrincipalName" --query User.Arn --output text --no-cli-pager
 if ($LASTEXITCODE -ne 0) { throw "aws failed: get-user" }
 for ($Attempt = 1; ; $Attempt++) {
-  aws eks create-access-entry '--cluster-name=prod' "--principal-arn=$PrincipalArn" --region 'eu-west-1' --no-cli-pager | Out-Null
+  $EksError = & {
+    $ErrorActionPreference = 'Continue'
+    $PSNativeCommandUseErrorActionPreference = $false
+    aws eks create-access-entry '--cluster-name=prod' "--principal-arn=$PrincipalArn" --region 'eu-west-1' --no-cli-pager 2>&1 | ForEach-Object { "$_" }
+  }
   if ($LASTEXITCODE -eq 0) { break }
+  # Retry only while EKS rejects the new principal; any other error (no such cluster, access denied) is final.
+  if ("$EksError" -notmatch 'InvalidParameterException.*principal') { throw "aws failed: create-access-entry. $EksError" }
+  Write-Warning "$EksError"
   if ($Attempt -ge 6) { throw "aws failed: create-access-entry. EKS still rejects the access entry after 6 attempts (see the error above)." }
   Write-Output "EKS can reject a new IAM principal for a short while; retrying in 10 seconds ($Attempt/6)."
   Start-Sleep -Seconds 10
