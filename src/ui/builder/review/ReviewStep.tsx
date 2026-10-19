@@ -8,7 +8,7 @@ import { useCallback, type JSX, type ReactNode } from "react";
 import { validateModelValues } from "../../../core/validate/values";
 import { isRevealed, useBuilderStore } from "../../../state/builder";
 import { useDerived } from "../../../state/derive";
-import { errorTextAt } from "../issues";
+import { errorTextAt, onReviewField } from "../issues";
 import { IssuesList } from "../output/IssuesList";
 import { Summary } from "../output/Summary";
 import { StringList } from "../scope/shared";
@@ -121,7 +121,11 @@ export function ReviewStep(): JSX.Element {
       </Field>
       <SpaceBetween size="xs">
         <Header variant="h3">Issues</Header>
-        <IssuesList issues={issues} />
+        {/* Errors on the fields above show there and in the output panel; listing them a third time is noise. */}
+        <IssuesList
+          issues={issues.filter((i) => !onReviewField(i))}
+          emptyText={issues.some(onReviewField) ? "No other issues." : undefined}
+        />
       </SpaceBetween>
       {derived.kind === "ready" && (
         <SpaceBetween size="xs">

@@ -38,6 +38,11 @@ export function focusIdFor(issue: Issue): { step: Step; target: string } | null 
   return null;
 }
 
+/** An error the Review step shows under one of its own fields (name, account ID, region, ...). */
+export function onReviewField(issue: Issue): boolean {
+  return issue.severity === "error" && issue.path !== undefined && focusIdFor(issue)?.step === 2;
+}
+
 /** Grant errors that no field of the grant can fix (a broken link, an unknown service): never a to-do. */
 const NO_FIELD = new Set([
   "E_INTERNAL",

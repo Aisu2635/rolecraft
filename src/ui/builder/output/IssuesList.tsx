@@ -63,13 +63,18 @@ function Rows(props: {
 
 /**
  * Errors on fields the user has not reached yet are listed under To do, as a short instruction, not in red.
- * `onJump` runs first, e.g. to close a modal that covers the builder.
+ * `onJump` runs first, e.g. to close a modal that covers the builder. `emptyText` replaces "No issues." when empty.
  */
-export function IssuesList(props: { issues: Issue[]; severities?: Severity[]; onJump?: () => void }): JSX.Element {
+export function IssuesList(props: {
+  issues: Issue[];
+  severities?: Severity[];
+  onJump?: () => void;
+  emptyText?: string | undefined;
+}): JSX.Element {
   const model = useBuilderStore((s) => s.model);
   const listed = props.severities ? props.issues.filter((i) => props.severities!.includes(i.severity)) : props.issues;
   const { pending, shown } = usePendingSplit(listed);
-  if (listed.length === 0) return <Box color="text-body-secondary">No issues.</Box>;
+  if (listed.length === 0) return <Box color="text-body-secondary">{props.emptyText ?? "No issues."}</Box>;
   return (
     <SpaceBetween size="xs">
       {pending.length > 0 && (
