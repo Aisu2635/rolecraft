@@ -193,3 +193,26 @@ describe("TrustStep", () => {
     expect(trust()).toEqual({ kind: "principal", target: "user", name: "alice" });
   });
 });
+
+describe("TrustStep touched fields", () => {
+  it("records a left field in the store under its focus id, so the output panel can see it", () => {
+    render(<TrustStep />);
+    pick("GitHub Actions");
+    expect(store().touched).toEqual({});
+    fireEvent.blur(screen.getByLabelText("GitHub owner"));
+    fireEvent.blur(screen.getByLabelText("AWS account ID"));
+    expect(store().touched).toEqual({ "field:trust.owner": true, "field:accountId": true });
+    act(() => store().focus("field:trust.repo"));
+    expect(store().touched["field:trust.repo"]).toBe(true);
+  });
+
+  it("forgets the trust fields when the trusted entity changes", () => {
+    render(<TrustStep />);
+    pick("Another AWS account");
+    fireEvent.blur(screen.getByLabelText("Trusted account ID"));
+    expect(screen.getByText(/Trusted account ID must be/)).toBeInTheDocument();
+    pick("GitHub Actions");
+    pick("Another AWS account");
+    expect(screen.queryByText(/Trusted account ID must be/)).toBeNull();
+  });
+});

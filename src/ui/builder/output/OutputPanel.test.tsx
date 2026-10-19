@@ -5,7 +5,9 @@ import { stringifyPolicy } from "../../../core/export/json";
 import { useBuilderStore } from "../../../state/builder";
 import { createCatalogStore } from "../../../state/catalog";
 import { deriveOutput } from "../../../state/derive";
+import type { JSX } from "react";
 import { grantFor, readyCatalog, withCatalog } from "../permissions/test-catalog";
+import { ScopeEditor } from "../scope/ScopeEditor";
 import { OutputPanel } from "./OutputPanel";
 
 const store = () => useBuilderStore.getState();
@@ -90,6 +92,7 @@ describe("OutputPanel", () => {
     act(() => {
       store().setTrust({ kind: "github", owner: "", repo: "r", ref: { type: "branch", value: "main" } });
       store().setStep(2);
+      store().revealAllErrors();
     });
     render(withCatalog(cat, <OutputPanel />));
     expect(screen.getByText("This policy has errors. Fix them before you apply it.")).toBeInTheDocument();
@@ -103,6 +106,7 @@ describe("OutputPanel", () => {
   it("disables Copy while errors leave no policy to copy", async () => {
     const cat = await s3GroupModel({ bucket: "Bad Bucket" });
     expect(ready(cat).policy).toBeNull();
+    act(() => store().touch("grant:g1"));
     render(withCatalog(cat, <OutputPanel />));
     expect(screen.getByText("This policy has errors. Fix them before you apply it.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Copy" })).toBeDisabled();
@@ -190,7 +194,10 @@ describe("OutputPanel copy and tab fallbacks", () => {
 
   it("keeps Copy enabled and shows the error banner when there are errors AND policy text (spec 6.5)", async () => {
     const cat = await s3GroupModel();
-    act(() => store().setTrust({ kind: "github", owner: "", repo: "r", ref: { type: "branch", value: "main" } }));
+    act(() => {
+      store().setTrust({ kind: "github", owner: "", repo: "r", ref: { type: "branch", value: "main" } });
+      store().touch("field:trust.owner");
+    });
     const r = ready(cat);
     expect(r.issues.some((i) => i.severity === "error")).toBe(true);
     expect(r.policy).not.toBeNull();
@@ -218,5 +225,66 @@ describe("OutputPanel copy and tab fallbacks", () => {
     fireEvent.click(screen.getByRole("tab", { name: "CLI" }));
     expect(seen[0]).toEqual([true, "policy"]);
     expect(seen[seen.length - 1]).toEqual([true, "cli"]);
+  });
+});
+
+/** The S3 grant's scope editor beside the panel, as in the builder. */
+function GrantScopeAndPanel(props: { cat: Cat }): JSX.Element {
+  const grant = useBuilderStore((s) => s.model.grants[0]!);
+  const svc = props.cat.getState().services.s3!;
+  return (
+    <>
+      <ScopeEditor grant={grant} svc={svc} issues={[]} onChange={(scope) => store().updateGrant(grant.id, (g) => ({ ...g, scope }))} />
+      <div data-testid="panel">
+        <OutputPanel />
+      </div>
+    </>
+  );
+}
+
+describe("OutputPanel: a calm first run", () => {
+  const panel = () => screen.getByTestId("panel");
+  const red = () => panel().querySelector("[class*=awsui_status-error]");
+
+  it("after adding S3, the empty bucket is a to-do, not an error, until the bucket is left", async () => {
+    const cat = await readyCatalog("s3");
+    act(() => store().addGrant(grantFor(cat, "s3", "g1")));
+    render(withCatalog(cat, <GrantScopeAndPanel cat={cat} />));
+    expect(red()).toBeNull();
+    expect(within(panel()).getByText("To do")).toBeInTheDocument();
+    expect(panel().querySelector("[class*=awsui_status-pending]")).toHaveTextContent("1 to do");
+    expect(within(panel()).getByText("Enter the bucket name")).toBeInTheDocument();
+    expect(within(panel()).getByRole("button", { name: "Jump to: Enter the bucket name" })).toBeInTheDocument();
+    expect(within(panel()).getByText("1 to do, 0 errors, 0 warnings, 1 info")).toBeInTheDocument();
+    expect(within(panel()).queryByText("This policy has errors. Fix them before you apply it.")).toBeNull();
+    // A calm banner holds the place of the error banner, so the buttons below do not move when it turns red.
+    expect(within(panel()).getByText("Finish the to-do items before you apply this policy.")).toBeInTheDocument();
+
+    fireEvent.blur(screen.getByLabelText("Bucket"));
+    expect(within(panel()).queryByText("Finish the to-do items before you apply this policy.")).toBeNull();
+    expect(within(panel()).queryByText("To do")).toBeNull();
+    expect(within(panel()).getByText("1 error, 0 warnings, 1 info")).toBeInTheDocument();
+    expect(within(panel()).getByText(/not a valid S3 bucket name/)).toBeInTheDocument();
+    expect(within(panel()).getByText("This policy has errors. Fix them before you apply it.")).toBeInTheDocument();
+  });
+
+  it("after picking GitHub Actions there are no errors, only to-dos for every trust field", async () => {
+    const cat = await readyCatalog("s3");
+    act(() => store().setTrust({ kind: "github", owner: "", repo: "", ref: { type: "branch", value: "main" } }));
+    render(withCatalog(cat, <div data-testid="panel"><OutputPanel /></div>));
+    expect(red()).toBeNull();
+    expect(within(panel()).getByText("4 to do, 0 errors, 0 warnings, 1 info")).toBeInTheDocument();
+    for (const text of ["Enter the GitHub owner", "Enter the repository name", "Enter the 12-digit AWS account ID"]) {
+      expect(within(panel()).getByText(text)).toBeInTheDocument();
+    }
+    expect(within(panel()).getByText("Enter both the GitHub owner and repository name.")).toBeInTheDocument();
+  });
+
+  it("keeps Copy disabled while a to-do leaves no policy", async () => {
+    const cat = await readyCatalog("s3");
+    act(() => store().addGrant(grantFor(cat, "s3", "g1")));
+    render(withCatalog(cat, <div data-testid="panel"><OutputPanel /></div>));
+    expect(red()).toBeNull();
+    expect(screen.getByRole("button", { name: "Copy" })).toBeDisabled();
   });
 });

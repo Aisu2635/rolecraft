@@ -1,4 +1,4 @@
-import { buildS3Role, expect, test } from "./fixtures";
+import { addService, buildS3Role, expect, test } from "./fixtures";
 
 test("an invalid bucket blocks Export, and Jump to lands on the bucket", async ({ page }) => {
   const grant = await buildS3Role(page, "Bad_Bucket");
@@ -28,4 +28,21 @@ test("in the Grid, Jump to switches to Sentences and lands on the visible bucket
   const bucket = grant.getByRole("textbox", { name: "Bucket" });
   await expect(bucket).toBeFocused();
   await expect(bucket).toBeInViewport();
+});
+
+test("a new S3 grant is a to-do, not an error, until Export reveals it", async ({ page }) => {
+  await page.goto("/builder");
+  await addService(page, "s3", "Amazon S3");
+  const output = page.getByRole("region", { name: "Generated output" });
+  await expect(output.getByText("To do", { exact: true })).toBeVisible();
+  await expect(output.getByText("Enter the bucket name")).toBeVisible();
+  await expect(output.locator("[class*=awsui_status-error]")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Export", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Export is blocked" });
+  await expect(dialog.locator("[class*=awsui_status-error]").getByText(/not a valid S3 bucket name/)).toBeVisible();
+  await dialog.getByRole("button", { name: /^Jump to: / }).first().click();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByRole("group", { name: "Amazon S3 permission" }).getByRole("textbox", { name: "Bucket" })).toBeFocused();
+  await expect(output.getByText("To do", { exact: true })).toHaveCount(0);
 });

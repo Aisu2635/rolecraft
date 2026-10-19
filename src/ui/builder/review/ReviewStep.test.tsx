@@ -92,3 +92,21 @@ describe("ReviewStep", () => {
     expect(screen.getByRole("heading", { name: "Can" })).toBeInTheDocument();
   });
 });
+
+describe("ReviewStep touched fields", () => {
+  it("records touched fields under their focus ids, list rows included", async () => {
+    await setup();
+    type("Name", "x");
+    fireEvent.click(screen.getByRole("button", { name: "Add managed policy ARN" }));
+    fireEvent.blur(screen.getByLabelText("Managed policy ARN 1"));
+    expect(store().touched["field:name"]).toBe(true);
+    expect(store().touched["field:managedPolicyArns[0]"]).toBe(true);
+  });
+
+  it("lists an untouched empty row as a to-do", async () => {
+    await setup();
+    fireEvent.click(screen.getByRole("button", { name: "Add managed policy ARN" }));
+    expect(screen.getByText("To do")).toBeInTheDocument();
+    expect(screen.getByText("Enter the managed policy ARN")).toBeInTheDocument();
+  });
+});

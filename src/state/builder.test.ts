@@ -79,3 +79,45 @@ describe("builder store", () => {
     expect(useBuilderStore.getState().revealErrors).toBe(false);
   });
 });
+
+describe("builder store: touched fields", () => {
+  beforeEach(() => useBuilderStore.getState().reset());
+  const st = () => useBuilderStore.getState();
+
+  it("touch marks one focus id; isRevealed is true for touched ids or when every error is revealed", () => {
+    expect(st().touched).toEqual({});
+    st().touch("field:trust.owner");
+    expect(st().touched).toEqual({ "field:trust.owner": true });
+    expect(st().isRevealed("field:trust.owner")).toBe(true);
+    expect(st().isRevealed("grant:a")).toBe(false);
+    st().revealAllErrors();
+    expect(st().isRevealed("grant:a")).toBe(true);
+  });
+
+  it("touching an already touched id keeps the same state", () => {
+    st().touch("x");
+    const before = st();
+    st().touch("x");
+    expect(st()).toBe(before);
+  });
+
+  it("reset and replaceModel clear touched", () => {
+    st().touch("x");
+    st().reset();
+    expect(st().touched).toEqual({});
+    st().touch("x");
+    st().replaceModel(createEmptyModel());
+    expect(st().touched).toEqual({});
+  });
+
+  it("switching the trust kind clears the trust fields it replaces; editing the same kind keeps them", () => {
+    st().setTrust({ kind: "account", accountId: "" });
+    st().touch("field:trust.accountId");
+    st().touch("field:accountId");
+    st().touch("grant:a");
+    st().setTrust({ kind: "account", accountId: "1" });
+    expect(st().touched["field:trust.accountId"]).toBe(true);
+    st().setTrust({ kind: "github", owner: "", repo: "", ref: { type: "branch", value: "main" } });
+    expect(st().touched).toEqual({ "field:accountId": true, "grant:a": true });
+  });
+});

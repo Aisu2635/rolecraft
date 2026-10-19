@@ -247,3 +247,14 @@ describe("SentenceEditor", () => {
     expect(note.closest('[class*="status-warning"]')).not.toBeNull();
   });
 });
+
+describe("SentenceEditor touched fields", () => {
+  it("leaving a scope field touches its grant's focus id", async () => {
+    const cat = await readyCatalog("s3");
+    store().addGrant(grantFor(cat, "s3", "g1"));
+    render(withCatalog(cat, <SentenceEditor />));
+    expect(store().touched).toEqual({});
+    fireEvent.blur(screen.getByLabelText("Prefix 1"));
+    expect(store().touched).toEqual({ "grant:g1": true });
+  });
+});

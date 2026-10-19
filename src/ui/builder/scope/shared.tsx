@@ -2,7 +2,7 @@ import Button from "@cloudscape-design/components/button";
 import FormField from "@cloudscape-design/components/form-field";
 import Input from "@cloudscape-design/components/input";
 import SpaceBetween from "@cloudscape-design/components/space-between";
-import { useState, type JSX, type ReactNode } from "react";
+import { createContext, useCallback, useContext, type JSX, type ReactNode } from "react";
 import type { Issue } from "../../../core/types";
 import { useBuilderStore } from "../../../state/builder";
 import { errorTextAt } from "../issues";
@@ -13,6 +13,12 @@ export const isRecord = (v: unknown): v is Record<string, unknown> =>
 
 export const str = (v: unknown): string => (typeof v === "string" ? v : "");
 
+/**
+ * The touched id of the scope fields below it: their grant's focus id, which is what `focusIdFor` gives the grant's
+ * issues, so the output panel holds them back until the user has left one of these fields.
+ */
+export const ScopeTouchId = createContext("");
+
 /** A form field whose error appears after its first blur, so a fresh grant is not covered in red. */
 export function ScopeField(props: {
   label: string;
@@ -20,15 +26,12 @@ export function ScopeField(props: {
   error?: string | undefined;
   children: ReactNode;
 }): JSX.Element {
-  const [touched, setTouched] = useState(false);
-  const reveal = useBuilderStore((s) => s.revealErrors);
+  const id = useContext(ScopeTouchId);
+  const touch = useBuilderStore((s) => s.touch);
+  const revealed = useBuilderStore((s) => s.isRevealed(id));
   return (
-    <div onBlur={() => setTouched(true)}>
-      <FormField
-        label={props.label}
-        description={props.description}
-        errorText={touched || reveal ? props.error : undefined}
-      >
+    <div onBlur={() => touch(id)}>
+      <FormField label={props.label} description={props.description} errorText={revealed ? props.error : undefined}>
         {props.children}
       </FormField>
     </div>
@@ -45,12 +48,15 @@ function ListItem(props: {
   onChange(v: string): void;
   onRemove(): void;
 }): JSX.Element {
-  const [touched, setTouched] = useState(false);
-  const reveal = useBuilderStore((s) => s.revealErrors);
-  const ref = useFocusTarget<HTMLDivElement>(props.focusId ?? "", () => setTouched(true));
+  const scopeId = useContext(ScopeTouchId);
+  const id = props.focusId ?? scopeId;
+  const touch = useBuilderStore((s) => s.touch);
+  const revealed = useBuilderStore((s) => s.isRevealed(id));
+  const onFocus = useCallback(() => touch(id), [touch, id]);
+  const ref = useFocusTarget<HTMLDivElement>(props.focusId ?? "", onFocus);
   return (
-    <div ref={ref} onBlur={() => setTouched(true)}>
-      <FormField errorText={touched || reveal ? props.error : undefined} stretch>
+    <div ref={ref} onBlur={onFocus}>
+      <FormField errorText={revealed ? props.error : undefined} stretch>
         <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
           <div style={{ flex: 1 }}>
             <Input ariaLabel={props.label} value={props.value} onChange={(e) => props.onChange(e.detail.value)} />

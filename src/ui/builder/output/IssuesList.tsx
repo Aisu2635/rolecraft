@@ -1,10 +1,11 @@
 import Box from "@cloudscape-design/components/box";
 import Button from "@cloudscape-design/components/button";
-import StatusIndicator from "@cloudscape-design/components/status-indicator";
+import SpaceBetween from "@cloudscape-design/components/space-between";
+import StatusIndicator, { type StatusIndicatorProps } from "@cloudscape-design/components/status-indicator";
 import type { JSX } from "react";
 import type { Issue, Severity } from "../../../core/types";
 import { useBuilderStore } from "../../../state/builder";
-import { focusIdFor } from "../issues";
+import { focusIdFor, splitPending, todoText } from "../issues";
 
 /**
  * Open the step that owns the issue, then focus its field. setStep clears the target, so it must go first.
@@ -22,19 +23,28 @@ function jump(issue: Issue): void {
 
 const JUMP_AFTER_CLOSE_MS = 50;
 
-/** `onJump` runs first, e.g. to close a modal that covers the builder. */
-export function IssuesList(props: { issues: Issue[]; severities?: Severity[]; onJump?: () => void }): JSX.Element {
-  const shown = props.severities ? props.issues.filter((i) => props.severities!.includes(i.severity)) : props.issues;
-  if (shown.length === 0) return <Box color="text-body-secondary">No issues.</Box>;
+/** Issues split into to-dos (errors on fields the user has not reached yet) and the ones shown as they are. */
+export function usePendingSplit(issues: Issue[]): { pending: Issue[]; shown: Issue[] } {
+  const touched = useBuilderStore((s) => s.touched);
+  const revealAll = useBuilderStore((s) => s.revealErrors);
+  return splitPending(issues, (id) => revealAll || touched[id] === true);
+}
+
+function Rows(props: {
+  issues: Issue[];
+  type(i: Issue): StatusIndicatorProps.Type;
+  text(i: Issue): string;
+  onJump?: (() => void) | undefined;
+}): JSX.Element {
   return (
     <ul style={{ margin: 0, paddingLeft: 0, listStyle: "none" }}>
-      {shown.map((issue, n) => (
+      {props.issues.map((issue, n) => (
         <li key={n} style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap", padding: "2px 0" }}>
-          <StatusIndicator type={issue.severity}>{issue.message}</StatusIndicator>
+          <StatusIndicator type={props.type(issue)}>{props.text(issue)}</StatusIndicator>
           {focusIdFor(issue) !== null && (
             <Button
               variant="inline-link"
-              ariaLabel={`Jump to: ${issue.message}`}
+              ariaLabel={`Jump to: ${props.text(issue)}`}
               onClick={() => {
                 if (!props.onJump) return jump(issue);
                 // A closing modal restores focus to its opener after this commit; jump once that has happened.
@@ -48,5 +58,27 @@ export function IssuesList(props: { issues: Issue[]; severities?: Severity[]; on
         </li>
       ))}
     </ul>
+  );
+}
+
+/**
+ * Errors on fields the user has not reached yet are listed under To do, as a short instruction, not in red.
+ * `onJump` runs first, e.g. to close a modal that covers the builder.
+ */
+export function IssuesList(props: { issues: Issue[]; severities?: Severity[]; onJump?: () => void }): JSX.Element {
+  const model = useBuilderStore((s) => s.model);
+  const listed = props.severities ? props.issues.filter((i) => props.severities!.includes(i.severity)) : props.issues;
+  const { pending, shown } = usePendingSplit(listed);
+  if (listed.length === 0) return <Box color="text-body-secondary">No issues.</Box>;
+  return (
+    <SpaceBetween size="xs">
+      {pending.length > 0 && (
+        <div>
+          <Box variant="h4">To do</Box>
+          <Rows issues={pending} type={() => "pending"} text={(i) => todoText(i, model)} onJump={props.onJump} />
+        </div>
+      )}
+      {shown.length > 0 && <Rows issues={shown} type={(i) => i.severity} text={(i) => i.message} onJump={props.onJump} />}
+    </SpaceBetween>
   );
 }

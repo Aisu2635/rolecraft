@@ -1,3 +1,4 @@
+import type { RoleModel } from "../../core/model/model";
 import type { Issue } from "../../core/types";
 import type { Step } from "../../state/builder";
 
@@ -35,6 +36,61 @@ export function focusIdFor(issue: Issue): { step: Step; target: string } | null 
   if (path.startsWith("trust.")) return { step: 0, target: "field:" + path };
   if (DETAIL_PATH.test(path)) return { step: 2, target: "field:" + path };
   return null;
+}
+
+/**
+ * Errors on fields the user has not reached yet are pending: a "to do", not a red error. An error is pending when
+ * it maps to a field and that field is not revealed. Warnings, infos and errors with no field are never pending.
+ */
+export function splitPending(issues: Issue[], revealed: (id: string) => boolean): { pending: Issue[]; shown: Issue[] } {
+  const pending: Issue[] = [];
+  const shown: Issue[] = [];
+  for (const issue of issues) {
+    const to = issue.severity === "error" ? focusIdFor(issue) : null;
+    (to && !revealed(to.target) ? pending : shown).push(issue);
+  }
+  return { pending, shown };
+}
+
+/** Short instructions for an empty field, keyed by issue id, or by id and path where one id covers many fields. */
+const TODO_TEXT: Record<string, string> = {
+  V_GITHUB_OWNER: "Enter the GitHub owner",
+  V_GITHUB_REPO: "Enter the repository name",
+  E_GITHUB_NEEDS_ACCOUNT: "Enter the 12-digit AWS account ID",
+  V_ACCOUNT_ID: "Enter the 12-digit AWS account ID",
+  V_PRINCIPAL_NAME: "Enter the group or user name",
+  V_ROLE_NAME: "Enter a name",
+  V_MANAGED_POLICY_ARN: "Enter the managed policy ARN",
+  "E_MODULE_DATA data.bucket": "Enter the bucket name",
+  "E_MODULE_DATA data.repository": "Enter the repository name",
+  "E_MODULE_DATA data.cluster": "Enter the cluster name",
+  "E_MODULE_DATA data.functionName": "Enter the function name",
+  "E_MODULE_DATA data.table": "Enter the table name",
+  "E_MODULE_DATA data.logGroup": "Enter the log group name",
+  "E_MODULE_DATA data.secretName": "Enter the secret name",
+  "E_MODULE_DATA data.keyArn": "Enter the key ARN",
+  "E_MODULE_DATA data.queueName": "Enter the queue name",
+  "E_MODULE_DATA data.selector.key": "Enter the tag key",
+  "E_MODULE_DATA data.selector.ids[]": "Enter the instance ID",
+};
+
+/** The value the issue is about: under the grant's scope for grant issues, else under the model. */
+function valueAt(model: RoleModel, issue: Issue): unknown {
+  const path = issue.path ?? TRUST_ISSUE_FIELDS[issue.id];
+  if (path === undefined) return undefined;
+  let node: unknown = issue.grantId ? model.grants.find((g) => g.id === issue.grantId)?.scope : model;
+  for (const key of path.match(/[^.[\]]+/g) ?? []) {
+    node = typeof node === "object" && node !== null ? (node as Record<string, unknown>)[key] : undefined;
+  }
+  return node;
+}
+
+/** What a to-do says: a short instruction while its field is empty, else the core message. */
+export function todoText(issue: Issue, model: RoleModel): string {
+  const value = valueAt(model, issue);
+  if (value !== undefined && value !== "") return issue.message;
+  const path = (issue.path ?? "").replace(/\[\d+\]/g, "[]");
+  return TODO_TEXT[`${issue.id} ${path}`] ?? TODO_TEXT[issue.id] ?? issue.message;
 }
 
 /** Info issues that say part of the user's input was left out of the policy. The row shows them as notes. */
