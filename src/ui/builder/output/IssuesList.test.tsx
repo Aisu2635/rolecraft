@@ -40,6 +40,16 @@ describe("IssuesList", () => {
     fireEvent.click(screen.getByRole("button", { name: /Wide access/ }));
     expect([useBuilderStore.getState().step, useBuilderStore.getState().focusTarget]).toEqual([1, "grant:g1"]);
   });
+
+  it("a Jump to a grant from the Grid switches the editor to Sentences, where the grant's fields are", () => {
+    useBuilderStore.getState().setEditor("grid");
+    render(<IssuesList issues={issues} />);
+    fireEvent.click(screen.getByRole("button", { name: /Owner is bad/ }));
+    expect(useBuilderStore.getState().editor).toBe("grid");
+    fireEvent.click(screen.getByRole("button", { name: /Wide access/ }));
+    const st = useBuilderStore.getState();
+    expect([st.step, st.editor, st.focusTarget]).toEqual([1, "sentences", "grant:g1"]);
+  });
 });
 
 describe("IssuesList onJump", () => {

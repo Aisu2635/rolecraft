@@ -6,13 +6,17 @@ import type { Issue, Severity } from "../../../core/types";
 import { useBuilderStore } from "../../../state/builder";
 import { focusIdFor } from "../issues";
 
-/** Open the step that owns the issue, then focus its field. setStep clears the target, so it must go first. */
+/**
+ * Open the step that owns the issue, then focus its field. setStep clears the target, so it must go first.
+ * A grant's fields live in the Sentences editor; the Grid only summarises them, so a grant target switches to it.
+ */
 function jump(issue: Issue): void {
   const to = focusIdFor(issue);
   if (!to) return;
   const s = useBuilderStore.getState();
   s.revealAllErrors();
   s.setStep(to.step);
+  if (to.target.startsWith("grant:")) s.setEditor("sentences");
   s.focus(to.target);
 }
 
