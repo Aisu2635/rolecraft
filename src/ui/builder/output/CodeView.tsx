@@ -6,6 +6,7 @@ export function CodeView(props: { text: string; language: ExportFile["language"]
   return (
     <pre
       tabIndex={0}
+      role="region"
       aria-label={props.label}
       data-language={props.language}
       style={{

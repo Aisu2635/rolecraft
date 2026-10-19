@@ -16,9 +16,9 @@ test("cross-account built in the grid survives editor switches and exports the r
   await addService(page, "textract", "Amazon Textract");
 
   const table = page.getByRole("region", { name: "Amazon Textract" });
-  await expect(table.getByRole("checkbox", { name: "Read", exact: true })).toBeChecked();
+  await expect(table.getByRole("checkbox", { name: "Read, Not set", exact: true })).toBeChecked();
   for (const level of ["List", "Write", "Tagging", "Permissions management"]) {
-    const box = table.getByRole("checkbox", { name: level, exact: true });
+    const box = table.getByRole("checkbox", { name: `${level}, Not set`, exact: true });
     if ((await box.count()) > 0) await expect(box).not.toBeChecked();
   }
   await table.getByRole("button", { name: "Edit scope of Amazon Textract" }).click();

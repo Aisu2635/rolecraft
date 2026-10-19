@@ -39,7 +39,7 @@ function LevelCell(props: { grant: Grant; svc: SlimService; level: AccessLevel }
     <Checkbox
       checked={levels.includes(level)}
       disabled={access.type !== "levels"}
-      ariaLabel={level}
+      ariaLabel={`${level}, ${scopeSummary(grant)}`}
       onChange={(e) =>
         updateGrant(grant.id, (g) => ({ ...g, access: { type: "levels", levels: withLevel(levels, level, e.detail.checked) } }))
       }
@@ -54,7 +54,7 @@ function PresetCell(props: { grant: Grant; preset: string; label: string }): JSX
     <input
       type="radio"
       name={"preset-" + grant.id}
-      aria-label={label}
+      aria-label={`${label}, ${scopeSummary(grant)}`}
       checked={grant.access.type === "preset" && grant.access.preset === preset}
       disabled={!grant.module}
       onChange={() => updateGrant(grant.id, (g) => ({ ...g, access: { type: "preset", preset } }))}

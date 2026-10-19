@@ -14,3 +14,10 @@ describe("CodeView", () => {
     expect(pre).toHaveAttribute("data-language", "json");
   });
 });
+
+describe("CodeView landmark", () => {
+  it("is a region named by its label", () => {
+    render(<CodeView text="x" language="json" label="Policy JSON" />);
+    expect(screen.getByRole("region", { name: "Policy JSON" }).tagName).toBe("PRE");
+  });
+});

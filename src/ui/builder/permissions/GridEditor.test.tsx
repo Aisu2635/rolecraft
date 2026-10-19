@@ -61,17 +61,17 @@ describe("GridEditor", () => {
     await setup(TEXTRACT_ALL);
     const [row] = bodyRows("Amazon Textract");
     expect(within(row!).getAllByText("—")).toHaveLength(2);
-    expect(within(row!).queryByRole("checkbox", { name: "List" })).toBeNull();
-    expect(within(row!).getByRole("checkbox", { name: "Write" })).toBeChecked();
-    fireEvent.click(within(row!).getByRole("checkbox", { name: "Read" }));
+    expect(within(row!).queryByRole("checkbox", { name: "List, All resources" })).toBeNull();
+    expect(within(row!).getByRole("checkbox", { name: "Write, All resources" })).toBeChecked();
+    fireEvent.click(within(row!).getByRole("checkbox", { name: "Read, All resources" }));
     expect(grants()[0]!.access).toEqual({ type: "levels", levels: ["Read", "Write"] });
-    fireEvent.click(within(bodyRows("Amazon Textract")[0]!).getByRole("checkbox", { name: "Write" }));
+    fireEvent.click(within(bodyRows("Amazon Textract")[0]!).getByRole("checkbox", { name: "Write, All resources" }));
     expect(grants()[0]!.access).toEqual({ type: "levels", levels: ["Read"] });
   });
 
   it("adds a level to a combination without losing the others", async () => {
     await setup({ ...TEXTRACT_ALL, access: { type: "levels", levels: ["Write", "Tagging"] } });
-    fireEvent.click(within(bodyRows("Amazon Textract")[0]!).getByRole("checkbox", { name: "Read" }));
+    fireEvent.click(within(bodyRows("Amazon Textract")[0]!).getByRole("checkbox", { name: "Read, All resources" }));
     expect(grants()[0]!.access).toEqual({ type: "levels", levels: ["Read", "Write", "Tagging"] });
   });
 
@@ -114,9 +114,9 @@ describe("GridEditor", () => {
       "read + write",
       "delete",
       "upload only",
-    ]);
-    expect(within(row!).getByRole("radio", { name: "list + read" })).toBeChecked();
-    fireEvent.click(within(row!).getByRole("radio", { name: "read + write" }));
+    ].map((p) => p + ", data-lake / reports/"));
+    expect(within(row!).getByRole("radio", { name: "list + read, data-lake / reports/" })).toBeChecked();
+    fireEvent.click(within(row!).getByRole("radio", { name: "read + write, data-lake / reports/" }));
     expect(grants()[0]!.access).toEqual({ type: "preset", preset: "read-write" });
     expect(grants()[0]!.scope).toEqual(S3.scope);
   });

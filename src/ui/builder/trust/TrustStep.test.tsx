@@ -24,6 +24,11 @@ beforeEach(() => store().reset());
 afterEach(cleanup);
 
 describe("TrustStep", () => {
+  it("names the tiles' group Trusted entity", () => {
+    render(<TrustStep />);
+    expect(screen.getByRole("radiogroup", { name: "Trusted entity" })).toBeInTheDocument();
+  });
+
   it("offers the six trusted entities, EC2 selected by default", () => {
     render(<TrustStep />);
     const tiles = createWrapper(document.body).findTiles()!;

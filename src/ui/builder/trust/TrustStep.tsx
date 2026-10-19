@@ -211,6 +211,7 @@ export function TrustStep(): JSX.Element {
   return (
     <SpaceBetween size="l">
       <Tiles
+        ariaLabel="Trusted entity"
         items={TILES}
         value={tileOf(trust)}
         columns={3}
