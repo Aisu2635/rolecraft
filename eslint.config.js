@@ -17,8 +17,23 @@ const nodePaths = builtinModules.filter((m) => !m.startsWith("_")).map((name) =>
 const nodePatterns = [{ group: ["node:*"], message: NODE_FREE }];
 const coreTests = ["src/core/**/*.test.ts", "src/core/**/__test__/**", "src/core/**/__fixtures__/**"];
 
+// The exporters pull in yaml (CloudFormation) and fflate (ZIP): the UI reaches them only through the lazy chunk.
+// (A gitignore-style `**/core/export` would also match core/export/json and the fixtures, so these are regexes.)
+const EXPORTER_MODULES = ["cli-bash", "cli-ps", "terraform", "cloudformation", "readme", "zip"];
+const SUFFIX = String.raw`(\.(ts|tsx|js))?$`;
+const coreExportPattern = {
+  regex: `(^|/)core/export(/index|/(${EXPORTER_MODULES.join("|")}))?${SUFFIX}`,
+  message: "Load exporters through src/ui/export/lazy.ts so yaml and fflate stay out of the initial bundle.",
+  allowTypeImports: true,
+};
+// Only lazy.ts may name the exporters module (as a dynamic import).
+const exportersModulePattern = {
+  regex: String.raw`(^|/)export/exporters${SUFFIX}|^\./exporters${SUFFIX}`,
+  message: "Only src/ui/export/lazy.ts may import src/ui/export/exporters; use loadExporters/useExporters.",
+};
+
 export default tseslint.config(
-  { ignores: ["dist", "coverage", "docs", ".superpowers"] },
+  { ignores: ["dist", "coverage", "docs", ".superpowers", "test-results", "playwright-report"] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
@@ -47,5 +62,18 @@ export default tseslint.config(
         })),
       ],
     },
+  },
+  {
+    files: ["src/ui/**", "src/state/**"],
+    // Tests may use the exporters directly: they are not part of the bundle.
+    ignores: ["src/ui/export/exporters.ts", "**/*.test.ts", "**/*.test.tsx"],
+    rules: {
+      "no-restricted-imports": "off",
+      "@typescript-eslint/no-restricted-imports": ["error", { patterns: [coreExportPattern, exportersModulePattern] }],
+    },
+  },
+  {
+    files: ["src/ui/export/lazy.ts"],
+    rules: { "@typescript-eslint/no-restricted-imports": ["error", { patterns: [coreExportPattern] }] },
   },
 );

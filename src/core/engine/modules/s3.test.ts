@@ -56,10 +56,10 @@ describe("s3 module", () => {
     expect(valid(r.statements)).toStrictEqual([]);
   });
 
-  it("whole bucket has no condition and subsumes other prefixes", () => {
+  it("an explicit / is the whole bucket: no condition, and it subsumes other prefixes", () => {
     const r = run("list-read", {
       bucket: "data-lake",
-      prefixes: ["a/", "", "/"],
+      prefixes: ["a/", "/"],
     });
     expect(r.statements).toStrictEqual([
       {
@@ -83,6 +83,32 @@ describe("s3 module", () => {
     });
     expect(r.issues[0]?.message).toContain("a/");
     expect(valid(r.statements)).toStrictEqual([]);
+  });
+
+  it("a blank extra prefix is an error on that row, never the whole bucket", () => {
+    const r = run("list-read", {
+      bucket: "data-lake",
+      prefixes: ["reports/", ""],
+    });
+    expect(r.statements).toStrictEqual([]);
+    expect(r.issues).toStrictEqual([
+      {
+        id: "E_S3_PREFIX_EMPTY",
+        severity: "error",
+        grantId: "g1",
+        path: "data.prefixes[1]",
+        message: "Folder 2 is empty. Fill it in or remove it.",
+      },
+    ]);
+  });
+
+  it("flags every blank prefix when there are several rows", () => {
+    const r = run("read", { bucket: "data-lake", prefixes: ["", "a/", ""] });
+    expect(r.statements).toStrictEqual([]);
+    expect(r.issues.map((i) => [i.id, i.path, i.message])).toStrictEqual([
+      ["E_S3_PREFIX_EMPTY", "data.prefixes[0]", "Folder 1 is empty. Fill it in or remove it."],
+      ["E_S3_PREFIX_EMPTY", "data.prefixes[2]", "Folder 3 is empty. Fill it in or remove it."],
+    ]);
   });
 
   it("whole bucket alone raises no issue; navigation is skipped", () => {
@@ -330,11 +356,17 @@ describe("s3 module", () => {
       "Can list, download and upload files in reports/ of data-lake.",
     );
     expect(ex("delete", d)).toBe("Can delete files in reports/ of data-lake.");
-    expect(ex("read", { ...d, prefixes: ["", "a/"] })).toBe(
+    expect(ex("read", { ...d, prefixes: ["/", "a/"] })).toBe(
       "Can download files in the whole bucket data-lake.",
     );
     expect(ex("read", { ...d, prefixes: ["a", "b/"] })).toBe(
       "Can download files in a/ and b/ of data-lake.",
+    );
+    expect(ex("read", { ...d, prefixes: ["reports/", ""] })).toBe(
+      "Can download files in reports/ of data-lake.",
+    );
+    expect(ex("read", { ...d, prefixes: [""] })).toBe(
+      "Can download files in the whole bucket data-lake.",
     );
   });
 });

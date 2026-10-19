@@ -158,7 +158,11 @@ const DATA_ARBS: Record<string, fc.Arbitrary<unknown>> = {
   s3: fc
     .record({
       bucket,
-      prefixes: fc.array(prefix, { minLength: 1, maxLength: 20 }),
+      // An empty prefix means the whole bucket only on its own; next to others it is an error (E_S3_PREFIX_EMPTY).
+      prefixes: fc.oneof(
+        fc.constant([""]),
+        fc.array(prefix.filter((p) => p !== ""), { minLength: 1, maxLength: 20 }),
+      ),
       allowNavigation: fc.boolean(),
       kmsKeyArn: optKey,
     })

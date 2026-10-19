@@ -4,10 +4,16 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   plugins: [react()],
   build: {
+    // scripts/check-bundle.ts reads dist/.vite/manifest.json.
+    manifest: true,
     rollupOptions: {
       output: {
         manualChunks(id: string) {
           if (id.includes("@cloudscape-design")) return "cloudscape";
+          const posix = id.replaceAll("\\", "/");
+          // The exporters' dependencies: kept in their own chunks so check-bundle can prove they load lazily.
+          if (posix.includes("node_modules/yaml/")) return "yaml";
+          if (posix.includes("node_modules/fflate/")) return "fflate";
           if (/node_modules\/(react|react-dom|react-router|react-router-dom|scheduler)\//.test(id.replaceAll("\\", "/")))
             return "react";
           return undefined;

@@ -236,7 +236,7 @@ function cleanupCommands(model: ExportInput["model"], s: Shape): string[] | null
 
 const GITHUB_PROVIDER_NOTE = "If your account doesn't have the GitHub OIDC provider yet,";
 
-function howToApply(input: ExportInput, s: Shape): string[] {
+function howToApplyLines(input: ExportInput, s: Shape): string[] {
   const { model, result } = input;
   const bash = exportCliBash(input).filename;
   const ps = exportCliPowerShell(input).filename;
@@ -371,6 +371,22 @@ function howToApply(input: ExportInput, s: Shape): string[] {
   return out;
 }
 
+/**
+ * The README's "How to apply" text split at its ### headings; the preamble (what to use, prerequisites incl.
+ * AWS CLI >= MIN_AWS_CLI) has title "". Joined with "\n" the markdown is exactly the README's text. Empty while
+ * no trust policy could be generated (nothing can be applied).
+ */
+export function applySections(input: ExportInput): { title: string; markdown: string }[] {
+  const s = shapeOf(input);
+  if (!s.principal && !input.result.trust) return [];
+  const sections: { title: string; lines: string[] }[] = [{ title: "", lines: [] }];
+  for (const line of howToApplyLines(input, s)) {
+    if (line.startsWith("### ")) sections.push({ title: line.slice(4), lines: [] });
+    (sections[sections.length - 1] as { lines: string[] }).lines.push(line);
+  }
+  return sections.map((x) => ({ title: x.title, markdown: x.lines.join("\n") }));
+}
+
 function permissionsSection(s: Shape): string[] {
   const list = (xs: string[]): string => xs.map((x) => `\`${x}\``).join(", ");
   const optional = (xs: string[]): string => (xs.length > 0 ? `; ${list(xs)} (only if you add the GitHub OIDC provider)` : "");
@@ -427,10 +443,11 @@ export function exportReadme(input: ExportInput): ExportFile {
   }
 
   lines.push("## How to apply", "");
-  if (!s.principal && !result.trust) {
+  const sections = applySections(input);
+  if (sections.length === 0) {
     lines.push("Nothing can be applied yet: no trust policy could be generated. Fix the issues in RoleCraft and export again.");
   } else {
-    lines.push(...howToApply(input, s), ...permissionsSection(s));
+    lines.push(...sections.map((x) => x.markdown).join("\n").split("\n"), ...permissionsSection(s));
   }
   return { filename: "README.md", language: "markdown", content: lines.join("\n").replace(/\n+$/, "") + "\n" };
 }
