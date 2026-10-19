@@ -195,7 +195,7 @@ export function ServiceSidebar(): JSX.Element {
         </Alert>
       )}
       {indexStatus !== "error" && !sections && <Box color="text-status-inactive">Loading services…</Box>}
-      {query.trim() &&
+      {query.trim() !== "" &&
         sections &&
         (results.length > 0 ? (
           <ServiceList label="Search results" entries={results} actions={actions} />
