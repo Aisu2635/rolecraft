@@ -92,6 +92,8 @@ describe("HeroDemo", () => {
     expect(stage?.textContent).toContain("list + read");
     expect(stage?.textContent).toContain("data-lake / reports/");
     expect(stage?.textContent).toContain('"Action": "s3:ListBucket"');
+    // The pinned engine output lists the folder itself and everything under it.
+    expect(stage?.textContent).toContain('"s3:prefix": ["reports/", "reports/*"]');
     expect(stage?.textContent).toContain('"Resource": "arn:aws:s3:::data-lake/reports/*"');
     expect(stage?.textContent).toContain("Least privilege");
     expect(vi.getTimerCount()).toBe(0);

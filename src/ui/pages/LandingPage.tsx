@@ -16,6 +16,14 @@ interface IndexInfo {
   services?: unknown[];
 }
 
+const DATA_DATE = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+
+/** "2026-10-19" -> "19 Oct 2026". generatedAt is a UTC calendar date, so it is formatted in UTC (no day shift). */
+export function formatDataDate(generatedAt: string): string {
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(generatedAt) ? new Date(`${generatedAt}T00:00:00Z`) : null;
+  return d && !Number.isNaN(d.getTime()) ? DATA_DATE.format(d) : generatedAt;
+}
+
 function useIndexInfo(): IndexInfo | null {
   const [info, setInfo] = useState<IndexInfo | null>(null);
   useEffect(() => {
@@ -174,7 +182,7 @@ export function LandingPage() {
             Built by <a href="https://omhinge.cloud">Om Hinge</a>
           </span>
           <span className="sp" />
-          {info?.generatedAt && <span>AWS data updated {info.generatedAt}</span>}
+          {info?.generatedAt && <span>AWS data updated {formatDataDate(info.generatedAt)}</span>}
           <span>Not affiliated with Amazon Web Services</span>
         </div>
       </footer>

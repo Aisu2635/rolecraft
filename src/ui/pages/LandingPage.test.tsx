@@ -34,12 +34,21 @@ describe("LandingPage", () => {
       "fetch",
       vi.fn().mockResolvedValue({
         ok: true,
-        json: () => Promise.resolve({ generatedAt: "2026-10-16", services: [1, 2, 3] }),
+        json: () => Promise.resolve({ generatedAt: "2026-10-19", services: [1, 2, 3] }),
       }),
     );
     renderLanding();
     expect(await screen.findByText("3 services")).toBeInTheDocument();
-    expect(screen.getByText("AWS data updated 2026-10-16")).toBeInTheDocument();
+    expect(screen.getByText("AWS data updated 19 Oct 2026")).toBeInTheDocument();
+  });
+
+  it("shows a generatedAt that is not a YYYY-MM-DD date as it is", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ generatedAt: "soon", services: [1] }) }),
+    );
+    renderLanding();
+    expect(await screen.findByText("AWS data updated soon")).toBeInTheDocument();
   });
 
   it("falls back when the response is not ok", async () => {
