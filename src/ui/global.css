@@ -164,6 +164,9 @@ a { color: var(--rc-link); }
 @media (max-width: 1279px) { .rc-ws { grid-template-columns: 200px minmax(0, 1fr) 340px; } .rc-main { padding: 16px; } }
 
 /* first-run tour: the cut-out and the card glide between steps */
+/* The card takes focus on each step; the ring (the step title's) shows when that came from the keyboard. */
+.rc-tour-card:focus { outline: none; }
+.rc-tour-card:focus-visible { outline: 2px solid var(--rc-focus); outline-offset: 2px; }
 .rc-tour-anim { transition: left 0.2s ease, top 0.2s ease, width 0.2s ease, height 0.2s ease; }
 @media (prefers-reduced-motion: reduce) { .rc-tour-anim { transition: none; } }
 

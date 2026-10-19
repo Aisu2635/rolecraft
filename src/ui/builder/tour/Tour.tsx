@@ -29,6 +29,15 @@ const MARGIN = 16;
 const PAD = 4;
 const INSET = 2;
 const CARD_WIDTH = 340;
+/** An open dropdown, menu or modal (or the trigger of one): Esc there closes it, not the tour. */
+const OVERLAY = [
+  '[aria-expanded="true"][aria-haspopup]',
+  '[aria-expanded="true"][role="combobox"]',
+  '[role="listbox"]',
+  '[role="menu"]',
+  '[role="dialog"]',
+  '[role="alertdialog"]',
+].join(", ");
 
 export interface Rect {
   left: number;
@@ -123,13 +132,15 @@ export function Tour(): JSX.Element | null {
     animate.current = true;
   }, [open, index, placed]);
 
-  // Esc skips, when it is pressed in the card (or with nothing focused), not when it closes a dropdown elsewhere.
+  // Esc skips from anywhere, except when it closes a dropdown, popover or modal: one that handled it (prevented
+  // the default or stopped it before the document), or one the key was pressed in.
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key !== "Escape") return;
+      if (e.key !== "Escape" || e.defaultPrevented) return;
       const t = e.target;
-      if (t === document.body || (t instanceof Node && card.current?.contains(t))) close();
+      if (t instanceof Element && !card.current?.contains(t) && t.closest(OVERLAY)) return;
+      close();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
@@ -214,7 +225,6 @@ export function Tour(): JSX.Element | null {
           border: `1px solid ${colorBorderPopover}`,
           borderRadius: borderRadiusPopover,
           boxShadow: shadowContainerActive,
-          outline: "none",
         }}
       >
         <div style={{ fontSize: fontSizeBodyS, color: colorTextBodySecondary, marginBottom: spaceScaledXxs }}>
@@ -238,10 +248,11 @@ export function Tour(): JSX.Element | null {
             Skip tour
           </Button>
           <div style={{ display: "flex", gap: spaceScaledXs, flexShrink: 0 }}>
-            <Button disabled={index === 0} onClick={back}>
+            <Button disabled={index === 0} ariaLabel="Previous tour stop" onClick={back}>
               Back
             </Button>
-            <Button variant="primary" onClick={next}>
+            {/* Named apart from the builder's own Next and Back; Done ends the tour, so it keeps its label. */}
+            <Button variant="primary" ariaLabel={last ? undefined : "Next tour stop"} onClick={next}>
               {last ? "Done" : "Next"}
             </Button>
           </div>

@@ -63,9 +63,10 @@ describe("Tour", () => {
       "Search or browse services here. Each one you add becomes a permission you can fine-tune.",
     );
     expect(card).toHaveTextContent("1 of 5");
-    for (const name of ["Back", "Next", "Skip tour"]) {
+    for (const name of ["Previous tour stop", "Next tour stop", "Skip tour"]) {
       expect(within(card).getByRole("button", { name })).toBeInTheDocument();
     }
+    expect(within(card).getByRole("button", { name: "Previous tour stop" })).toBeDisabled();
     expect(card).toHaveFocus();
   });
 
@@ -85,15 +86,15 @@ describe("Tour", () => {
   it("Next, Back and Done walk the steps; Done closes and sets the flag", () => {
     ui();
     const card = () => screen.getByRole("dialog");
-    fireEvent.click(within(card()).getByRole("button", { name: "Next" }));
+    fireEvent.click(within(card()).getByRole("button", { name: "Next tour stop" }));
     expect(card()).toHaveAccessibleName("Three steps");
     expect(card()).toHaveTextContent("2 of 5");
-    fireEvent.click(within(card()).getByRole("button", { name: "Back" }));
+    fireEvent.click(within(card()).getByRole("button", { name: "Previous tour stop" }));
     expect(card()).toHaveAccessibleName("Pick AWS services");
-    for (let i = 0; i < 4; i++) fireEvent.click(within(card()).getByRole("button", { name: "Next" }));
+    for (let i = 0; i < 4; i++) fireEvent.click(within(card()).getByRole("button", { name: "Next tour stop" }));
     expect(card()).toHaveAccessibleName("Copy, export or share");
     expect(card()).toHaveTextContent("5 of 5");
-    expect(within(card()).queryByRole("button", { name: "Next" })).toBeNull();
+    expect(within(card()).queryByRole("button", { name: "Next tour stop" })).toBeNull();
     fireEvent.click(within(card()).getByRole("button", { name: "Done" }));
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(localStorage.getItem(TOUR_KEY)).toBe("seen");
@@ -106,14 +107,71 @@ describe("Tour", () => {
     expect(localStorage.getItem(TOUR_KEY)).toBe("seen");
   });
 
-  it("Esc pressed elsewhere on the page (e.g. to close a dropdown) leaves the tour open", () => {
+  it("Esc pressed anywhere else on the page skips the tour", () => {
     ui();
     const field = document.createElement("input");
     document.body.append(field);
     field.focus();
     fireEvent.keyDown(field, { key: "Escape" });
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(localStorage.getItem(TOUR_KEY)).toBe("seen");
     field.remove();
+  });
+
+  it("Esc that a dropdown, popover or modal handled (default prevented) leaves the tour open", () => {
+    ui();
+    const field = document.createElement("input");
+    field.addEventListener("keydown", (e) => e.preventDefault());
+    document.body.append(field);
+    fireEvent.keyDown(field, { key: "Escape" });
+    expect(screen.getByRole("dialog", { name: "Pick AWS services" })).toBeInTheDocument();
+    field.remove();
+  });
+
+  it.each([
+    ["an open select", '<button type="button" aria-haspopup="listbox" aria-expanded="true">trigger</button>'],
+    ["an open autosuggest", '<input role="combobox" aria-expanded="true" />'],
+    ["a dropdown list", '<ul role="listbox"><li role="option" tabindex="-1">option</li></ul>'],
+    ["a menu", '<ul role="menu"><li role="menuitem" tabindex="-1">item</li></ul>'],
+    ["a modal", '<div role="dialog" aria-modal="true"><input /></div>'],
+  ])("Esc inside %s leaves the tour open", (_, html) => {
+    ui();
+    const host = document.createElement("div");
+    host.innerHTML = html;
+    document.body.append(host);
+    const target = host.querySelector("input, li, button")!;
+    fireEvent.keyDown(target, { key: "Escape" });
+    expect(screen.getByRole("dialog", { name: "Pick AWS services" })).toBeInTheDocument();
+    host.remove();
+  });
+
+  it("Esc on an expanded section header (not an overlay) still skips the tour", () => {
+    ui();
+    const header = document.createElement("button");
+    header.setAttribute("aria-expanded", "true");
+    document.body.append(header);
+    fireEvent.keyDown(header, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    header.remove();
+  });
+
+  it("Next and Back are named as tour stops; their visible labels stay Next, Back and Done", () => {
+    ui();
+    const card = () => screen.getByRole("dialog");
+    expect(within(card()).getByRole("button", { name: "Next tour stop" })).toHaveTextContent(/^Next$/);
+    expect(within(card()).getByRole("button", { name: "Previous tour stop" })).toHaveTextContent(/^Back$/);
+    for (let i = 0; i < 4; i++) fireEvent.click(within(card()).getByRole("button", { name: "Next tour stop" }));
+    expect(within(card()).getByRole("button", { name: "Done" })).toHaveTextContent(/^Done$/);
+  });
+
+  it("the card shows the step heading's focus ring when focused from the keyboard", () => {
+    ui();
+    const card = screen.getByRole("dialog");
+    expect(card).toHaveClass("rc-tour-card");
+    // An inline outline would override the stylesheet's :focus-visible ring.
+    expect(card.style.outline).toBe("");
+    expect(css).toContain(".rc-tour-card:focus { outline: none; }");
+    expect(css).toContain(".rc-tour-card:focus-visible { outline: 2px solid var(--rc-focus); outline-offset: 2px; }");
   });
 
   it("Skip tour closes and sets the flag", () => {
@@ -131,8 +189,8 @@ describe("Tour", () => {
     act(() => requestTour());
     const card = screen.getByRole("dialog", { name: "Pick AWS services" });
     expect(card).toHaveFocus();
-    fireEvent.click(within(card).getByRole("button", { name: "Next" }));
-    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Back" }));
+    fireEvent.click(within(card).getByRole("button", { name: "Next tour stop" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Previous tour stop" }));
     // Back is disabled on the first step, so focus is put back on the card rather than lost.
     expect(screen.getByRole("dialog")).toContainElement(document.activeElement as HTMLElement);
     fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
