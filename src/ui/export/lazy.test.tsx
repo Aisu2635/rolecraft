@@ -88,4 +88,42 @@ describe("useExporters after a redeploy", () => {
     await waitFor(() => expect(result.current.status).toBe("error"));
     expect(result.current.mod).toBeUndefined();
   });
+
+  it("failures add up across callers: one in the modal, then one in a tab, and both show Reload", async () => {
+    lazy.resetExportersForTests(() => Promise.reject(new Error("MIME type")));
+    const modal = renderHook(() => lazy.useExporters(true));
+    await waitFor(() => expect(modal.result.current.status).toBe("error"));
+    expect(lazy.redeployState()).toEqual({ failures: 1, stale: false });
+    const tab = renderHook(({ on }) => lazy.useExporters(on), { initialProps: { on: false } });
+    expect(tab.result.current.stale).toBe(false);
+    tab.rerender({ on: true });
+    await waitFor(() => expect(tab.result.current.status).toBe("error"));
+    expect(lazy.redeployState()).toEqual({ failures: 2, stale: true });
+    expect(tab.result.current.stale).toBe(true);
+    expect(modal.result.current.stale).toBe(true);
+  });
+
+  it("one failed load shared by two callers counts once", async () => {
+    lazy.resetExportersForTests(() => Promise.reject(new Error("offline")));
+    const a = renderHook(() => lazy.useExporters(true));
+    const b = renderHook(() => lazy.useExporters(true));
+    await waitFor(() => expect(a.result.current.status).toBe("error"));
+    await waitFor(() => expect(b.result.current.status).toBe("error"));
+    expect(lazy.redeployState()).toEqual({ failures: 1, stale: false });
+  });
+
+  it("a success anywhere resets the shared count", async () => {
+    const importer = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce(fake)
+      .mockRejectedValue(new Error("never"));
+    lazy.resetExportersForTests(importer);
+    const modal = renderHook(() => lazy.useExporters(true));
+    await waitFor(() => expect(modal.result.current.status).toBe("error"));
+    const tab = renderHook(() => lazy.useExporters(true));
+    await waitFor(() => expect(tab.result.current.status).toBe("ready"));
+    expect(lazy.redeployState()).toEqual({ failures: 0, stale: false });
+    expect(modal.result.current.stale).toBe(false);
+  });
 });

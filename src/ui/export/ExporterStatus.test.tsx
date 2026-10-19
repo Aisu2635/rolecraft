@@ -7,6 +7,15 @@ const store = () => useBuilderStore.getState();
 const UPDATED = "RoleCraft has been updated. Reload to continue. Your role is kept in the link.";
 const TOO_LARGE = "This role is too large to keep in the link. Export or copy it before reloading.";
 
+/** Policy ARNs of incompressible text, far past the share-link limit. */
+function tooLargeArns(): string[] {
+  let a = 7;
+  const next = (): number => (a = (Math.imul(a, 1103515245) + 12345) >>> 0) / 4294967296;
+  const rnd = (n: number): string =>
+    Array.from({ length: n }, () => "0123456789abcdefghijklmnopqrstuvwxyz"[Math.floor(next() * 36)]).join("");
+  return Array.from({ length: 100 }, () => rnd(200));
+}
+
 beforeEach(() => {
   store().reset();
   window.history.replaceState(null, "", "/builder");
@@ -53,6 +62,19 @@ describe("ExporterStatus", () => {
     expect(screen.getByText(TOO_LARGE)).toBeInTheDocument();
     expect(screen.queryByText(UPDATED)).toBeNull();
     expect(screen.getByText("RoleCraft has been updated. Reload to continue.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Reload" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Reload anyway" })).toBeInTheDocument();
+  });
+
+  it("Reload does not reload a role too large for the link: it shows the warning, then Reload anyway reloads", () => {
+    act(() => store().setFields({ managedPolicyArns: tooLargeArns() }));
+    const reload = vi.fn();
+    render(<ExporterStatus state={{ status: "error", retry: vi.fn(), stale: true }} reload={reload} />);
+    expect(screen.queryByText(TOO_LARGE)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Reload" }));
+    expect(reload).not.toHaveBeenCalled();
+    expect(store().shareStatus).toBe("too-large");
+    expect(screen.getByText(TOO_LARGE)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Reload anyway" }));
+    expect(reload).toHaveBeenCalledTimes(1);
   });
 });
