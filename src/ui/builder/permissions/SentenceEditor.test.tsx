@@ -213,4 +213,20 @@ describe("SentenceEditor", () => {
     });
     expect(screen.getByLabelText("Bucket")).toHaveFocus();
   });
+
+  it("a Jump to on a grant whose Scope was collapsed by hand opens it, then focuses the invalid field", async () => {
+    const cat = await readyCatalog("s3");
+    store().addGrant(grantFor(cat, "s3", "g1"));
+    render(withCatalog(cat, <SentenceEditor />));
+    type("Bucket", "Bad_Bucket");
+    act(() => store().revealAllErrors());
+    const toggle = createWrapper(document.body).findExpandableSection()!.findExpandButton().getElement();
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    act(() => store().focus("grant:g1"));
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByLabelText("Bucket")).toHaveFocus();
+    expect(store().focusTarget).toBeNull();
+  });
 });

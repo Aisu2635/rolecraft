@@ -4,7 +4,7 @@ import ExpandableSection from "@cloudscape-design/components/expandable-section"
 import Select from "@cloudscape-design/components/select";
 import SpaceBetween from "@cloudscape-design/components/space-between";
 import StatusIndicator from "@cloudscape-design/components/status-indicator";
-import { useState, type JSX } from "react";
+import { useCallback, useState, type JSX } from "react";
 import type { Grant } from "../../../core/model/model";
 import type { Issue, SlimService } from "../../../core/types";
 import { useBuilderStore } from "../../../state/builder";
@@ -20,15 +20,22 @@ import { applyVerb, verbChoices } from "./verbs";
 const INVALID_FIELD = 'input[aria-invalid="true"]:not([disabled]), textarea[aria-invalid="true"]';
 const rowStyle = { display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" } as const;
 
-function GrantEditor(props: { grant: Grant; svc: SlimService; issues: Issue[]; name: string }): JSX.Element {
-  const { grant, svc, issues, name } = props;
+/** `userOpen` is the Scope section's state as the user (or a Jump to) last set it; null until then. */
+function GrantEditor(props: {
+  grant: Grant;
+  svc: SlimService;
+  issues: Issue[];
+  name: string;
+  userOpen: boolean | null;
+  setUserOpen(open: boolean): void;
+}): JSX.Element {
+  const { grant, svc, issues, name, userOpen, setUserOpen } = props;
   const updateGrant = useBuilderStore((s) => s.updateGrant);
   const mine = grantIssues(issues, grant.id);
   // Issues with a path appear on their own field; the row lists only the ones no field can show.
   const shown = mine.filter((i) => i.severity !== "info" && i.path === undefined);
   const hasErrors = mine.some((i) => i.severity === "error");
   // Open while the grant has errors, then stay open so the editor does not collapse as the last error is fixed.
-  const [userOpen, setUserOpen] = useState<boolean | null>(null);
   const [sawErrors, setSawErrors] = useState(false);
   if (hasErrors && !sawErrors) setSawErrors(true);
   const { options, selected } = verbChoices(grant, svc);
@@ -77,8 +84,11 @@ function GrantRow(props: { grant: Grant; issues: Issue[] }): JSX.Element {
   const info = useServiceInfo(grant.service);
   const { svc, name } = info;
   const removeGrant = useBuilderStore((s) => s.removeGrant);
-  // A Jump to reveals the errors first, so the invalid field is marked by the time the row takes focus.
-  const ref = useFocusTarget<HTMLDivElement>("grant:" + grant.id, undefined, INVALID_FIELD);
+  const [userOpen, setUserOpen] = useState<boolean | null>(null);
+  // A Jump to reveals the errors first, so the invalid field is marked by the time the row takes focus. It also opens
+  // a Scope section the user collapsed, since a hidden field cannot take focus.
+  const openScope = useCallback(() => setUserOpen(true), []);
+  const ref = useFocusTarget<HTMLDivElement>("grant:" + grant.id, openScope, INVALID_FIELD);
   return (
     <div ref={ref} role="group" aria-label={`${name} permission`} className="rc-grant">
       <SpaceBetween size="xs">
@@ -92,7 +102,14 @@ function GrantRow(props: { grant: Grant; issues: Issue[] }): JSX.Element {
           />
         </div>
         {info.status === "ready" && svc ? (
-          <GrantEditor grant={grant} svc={svc} issues={props.issues} name={name} />
+          <GrantEditor
+            grant={grant}
+            svc={svc}
+            issues={props.issues}
+            name={name}
+            userOpen={userOpen}
+            setUserOpen={setUserOpen}
+          />
         ) : (
           <ServiceUnavailable info={info} />
         )}
