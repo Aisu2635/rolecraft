@@ -106,6 +106,16 @@ export function ServiceSidebar(): JSX.Element {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // Grants restored while the index was failing have their services in "error" too, and ensureServices skips those,
+  // so once the index loads they are retried here instead of waiting for a second Retry on each grant.
+  const retryIndex = async (): Promise<void> => {
+    await catalog.getState().ensureIndex();
+    const { indexStatus, status, retry } = catalog.getState();
+    if (indexStatus !== "ready") return;
+    const used = new Set(useBuilderStore.getState().model.grants.map((g) => g.service));
+    await Promise.all([...used].filter((k) => status[k] === "error").map((k) => retry(k)));
+  };
+
   const choose = (key: string): void => {
     // The ref guards synchronously; state alone would let a fast double click add two grants.
     if (inFlight.current.has(key)) return;
@@ -180,7 +190,7 @@ export function ServiceSidebar(): JSX.Element {
         </Alert>
       )}
       {indexStatus === "error" && (
-        <Alert type="error" action={<Button onClick={() => void catalog.getState().ensureIndex()}>Retry</Button>}>
+        <Alert type="error" action={<Button onClick={() => void retryIndex()}>Retry</Button>}>
           Couldn't load the AWS service list.
         </Alert>
       )}

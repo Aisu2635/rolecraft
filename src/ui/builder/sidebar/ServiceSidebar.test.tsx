@@ -166,4 +166,19 @@ describe("ServiceSidebar", () => {
     expect(await screen.findByText("Popular")).toBeInTheDocument();
     expect(screen.queryByText("Couldn't load the AWS service list.")).toBeNull();
   });
+
+  it("after the index Retry, also retries the services of restored grants that failed with it", async () => {
+    let fail = true;
+    useBuilderStore.getState().replaceModel({
+      ...useBuilderStore.getState().model,
+      grants: [{ id: "g1", service: "s3", scope: { type: "all" }, access: { type: "levels", levels: ["Read"] } }],
+    });
+    const { store } = setup((p) => fail && p.endsWith("/index.json"));
+    await act(() => store.getState().ensureServices(["s3"]));
+    expect(await screen.findByText("Couldn't load the AWS service list.")).toBeInTheDocument();
+    expect(store.getState().status.s3).toBe("error");
+    fail = false;
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(store.getState().status.s3).toBe("ready"));
+  });
 });
