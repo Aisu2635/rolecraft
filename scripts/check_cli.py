@@ -18,7 +18,9 @@ command, an unterminated heredoc/here-string/quote/substitution, and a fence in 
 contains `aws ` are all problems, and so is a README prose line (outside code spans and fences) that reads
 like a command (`aws <svc> <op> --flag`). In scripts and README fences, a reference to a variable that is
 never assigned (in any form) and isn't automatic/environment (PowerShell automatic variables, $env:*;
-bash special parameters, HOME/PWD/PATH-style variables, AWS_*) is a problem: typos fail.
+bash special parameters, HOME/PWD/PATH-style variables, AWS_*) is a problem: typos fail. That includes
+references in bodies the shell expands: unquoted heredocs (`<<EOF`) and PowerShell `@"..."@` here-strings,
+but not `<<'EOF'` or `@'...'@`, which are literal.
 
 For each command it asserts: the operation (or waiter) exists, every --flag (or --flag=value) maps to an
 input member or a CLI global (none given twice), boolean members are used as --flag / --no-flag, every
@@ -133,7 +135,8 @@ class Scanner:
         self.ps = dialect == "ps"
         self.line_of = line_of  # offset -> source line number
         self.commands: list[Command] = []
-        # bash: [marker, strip tabs, body is a shell script] for heredoc bodies starting on the next line
+        # bash: [marker, strip tabs, body is a shell script, body is expanded (unquoted marker)] for heredoc
+        # bodies starting on the next line
         self.heredocs: list[list] = []
         self.command_word = ""  # first word of the current simple command (bash: `bash <<EOF` runs the body)
         self.here_string: str | None = None  # PowerShell: terminator ('@ or "@) of a body starting next line
@@ -307,7 +310,8 @@ class Scanner:
                     if not self.ps and op == "<<":
                         script = os.path.basename(self.command_word) in SHELLS
                         piped.append(len(self.heredocs))
-                        self.heredocs.append([w.value, strip_tabs, script])
+                        expanded = not any(q in w.raw for q in "'\"\\")  # <<EOF, not <<'EOF' / <<\EOF
+                        self.heredocs.append([w.value, strip_tabs, script, expanded])
                 continue
             if c == "(":
                 i = self.scan(i + 1, ")")
@@ -402,11 +406,12 @@ BASH_BRACED = re.compile(r"\{([#!]?)([A-Za-z_]\w*)(:?[-=?+])?")
 PS_BRACED = re.compile(r"\{([A-Za-z_]\w*(?::[A-Za-z_]\w*)?)\}")
 
 
-def references(text: str, ps: bool) -> list[tuple[int, str]]:
+def references(text: str, ps: bool, body: bool = False) -> list[tuple[int, str]]:
     """(offset, name) of every variable reference outside single quotes and comments.
 
     bash `${X:-default}` style expansions (default, assign, error, alternate) are not references that can
-    fail, so they are left out; PowerShell `$env:X` is the environment, also left out.
+    fail, so they are left out; PowerShell `$env:X` is the environment, also left out. `body`: `text` is an
+    expanded heredoc / @"..."@ here-string body, where quotes and # are literal outside $(...).
     """
     refs: list[tuple[int, str]] = []
     esc = "`" if ps else "\\"
@@ -447,6 +452,9 @@ def references(text: str, ps: bool) -> list[tuple[int, str]]:
                     refs.append((i, m.group(1) if ps else m.group(0)))
                 i += 1 + m.end()
                 continue
+            i += 1
+            continue
+        if body and not stack:
             i += 1
             continue
         if in_dq:
@@ -544,6 +552,7 @@ def extract(
     problems: list[Problem] = []
     logicals: list[Logical] = []
     bodies: list[tuple[str, int]] = []  # (body, first line) of heredocs fed to a shell
+    expanded: list[tuple[str, int]] = []  # (body, first line) of unquoted heredocs and @"..."@ here-strings
     heredocs: list[list] = []
     body: list[str] = []
     body_start = 0
@@ -572,11 +581,13 @@ def extract(
 
     for idx, line in enumerate(text.split("\n"), start=1):
         if heredocs:
-            marker, strip_tabs, script = heredocs[0]
+            marker, strip_tabs, script, expands = heredocs[0]
             if (line.lstrip("\t") if strip_tabs else line) == marker:
                 heredocs.pop(0)
                 if script:  # `bash <<EOF` / `cat <<EOF | bash`: the body runs, so check it
                     bodies.append(("\n".join(body), body_start))
+                elif expands and body:  # `cat <<EOF`: the shell expands variables in the body
+                    expanded.append(("\n".join(body), body_start))
                 body = []
             else:
                 if not body:
@@ -585,7 +596,14 @@ def extract(
             continue
         if here_string is not None:
             if line.startswith(here_string):
+                if here_string == '"@' and body:  # @"..."@ expands variables; @'...'@ is literal
+                    expanded.append(("\n".join(body), body_start))
                 here_string = None
+                body = []
+            else:
+                if not body:
+                    body_start = idx
+                body.append(line)
             continue
         if ps and block_comment:
             if "#>" in line:
@@ -643,6 +661,14 @@ def extract(
                 if key(name) in known or (not ps and name.startswith("AWS_")):
                     continue
                 line = lg.nums[min(off, len(lg.nums) - 1)] + line_offset
+                if (line, key(name)) not in seen:
+                    seen.add((line, key(name)))
+                    problems.append((line, f"${name} is never assigned"))
+        for body_text, start in expanded:
+            for off, name in references(body_text, ps, body=True):
+                if key(name) in known or (not ps and name.startswith("AWS_")):
+                    continue
+                line = start + body_text.count("\n", 0, off) + line_offset
                 if (line, key(name)) not in seen:
                     seen.add((line, key(name)))
                     problems.append((line, f"${name} is never assigned"))
