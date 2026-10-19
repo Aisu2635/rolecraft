@@ -12,7 +12,10 @@ export interface BuilderState {
   editor: EditorMode;
   focusTarget: string | null;
   shareStatus: "ok" | "too-large";
-  /** When true, every field shows its error without waiting for a blur (restored roles, blocked export, Jump to). */
+  /**
+   * When true, every field shows its error without waiting for a blur (restored roles, blocked export, Jump to).
+   * Adding a grant turns it off: those errors have been shown, and a new blank grant should not start out red.
+   */
   revealErrors: boolean;
   setFields(p: ModelFields): void;
   setTrust(t: Trust): void;
@@ -37,7 +40,7 @@ export const useBuilderStore = create<BuilderState>((set) => ({
   revealErrors: false,
   setFields: (p) => set((s) => ({ model: ops.setFields(s.model, p) })),
   setTrust: (t) => set((s) => ({ model: ops.setTrust(s.model, t) })),
-  addGrant: (g) => set((s) => ({ model: ops.addGrant(s.model, g) })),
+  addGrant: (g) => set((s) => ({ model: ops.addGrant(s.model, g), revealErrors: false })),
   updateGrant: (id, f) => set((s) => ({ model: ops.updateGrant(s.model, id, f) })),
   removeGrant: (id) =>
     set((s) => ({

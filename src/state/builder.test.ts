@@ -67,4 +67,15 @@ describe("builder store", () => {
     s.reset();
     expect(useBuilderStore.getState().revealErrors).toBe(false);
   });
+
+  it("adding a grant turns revealErrors off, so a new blank grant is not red before the user touches it", () => {
+    const s = useBuilderStore.getState();
+    s.replaceModel(createEmptyModel());
+    expect(useBuilderStore.getState().revealErrors).toBe(true);
+    s.addGrant(g);
+    expect(useBuilderStore.getState().revealErrors).toBe(false);
+    s.revealAllErrors();
+    s.addGrant({ ...g, id: "b" });
+    expect(useBuilderStore.getState().revealErrors).toBe(false);
+  });
 });
