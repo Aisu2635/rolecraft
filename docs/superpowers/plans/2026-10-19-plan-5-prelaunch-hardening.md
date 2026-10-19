@@ -219,3 +219,93 @@ Each item is either assigned to a task or waived with a ruling. Waivers also go 
 - [ ] **Step 3: EKS cases.** If moto doesn't support `create-access-entry`, run those cases with a stub: a PATH-shadowing `aws` wrapper for bash, and a function for pwsh. The stub answers the `eks` subcommands, failing the first call with the propagation error, so the retry path runs. Every other command passes through to the real CLI. Terraform EKS resources are skipped with an explicit allow-list in the script. Ruling, recorded in the ledger: the stub tests our retry logic, not EKS.
 - [ ] **Step 4: Run it.** Push and watch the Actions run until it passes. A real export defect it finds is fixed in core, test first.
 - [ ] **Step 5: Close the backlog.** Mark every item in `hardening-backlog.md` as done (commit), waived (ruling) or moved (milestone 8), then commit.
+
+---
+
+## Added 2026-10-19 (owner feedback)
+
+Execution order: Task 2, **Task 8**, Task 3, Task 4, **Task 9**, Task 5, Task 6, Task 7.
+
+### Task 8: A calm first run: "to do", not red errors, for fields the user hasn't reached
+
+**Observed (Chromium, 2026-10-19):** a fresh builder is clean. But the first click makes the output panel show red errors for empty fields the user hasn't reached:
+- adding Amazon S3 shows "1 error: The Amazon S3 settings are invalid: not a valid S3 bucket name.";
+- picking GitHub Actions shows "4 errors" (owner, repository, account ID, owner+repo);
+- picking Another AWS account shows "1 error: Trusted account ID must be exactly 12 digits."
+The fields themselves already wait for blur or reveal, but the output panel's IssuesList and StatusLine don't.
+
+**Files:**
+- Modify: `src/state/builder.ts`, `src/ui/builder/scope/shared.tsx`, `src/ui/builder/trust/TrustStep.tsx`, `src/ui/builder/review/ReviewStep.tsx`, `src/ui/builder/issues.ts`, `src/ui/builder/output/IssuesList.tsx`, `src/ui/builder/output/StatusLine.tsx`, `src/ui/builder/output/OutputPanel.tsx`, `src/ui/export/ExportModal.tsx` (blocked view)
+- Test: the matching `*.test.tsx`; `tests/e2e/export-blocked.spec.ts` (extend)
+
+**Interfaces:**
+- Produces, in the store:
+  - `touched: Record<string, true>`, keyed by the field's focus id (the same ids `focusIdFor` returns);
+  - `touch(id: string): void`;
+  - `isRevealed(id: string): boolean`, true when `revealErrors || touched[id]`.
+  Per-field `useState` touched flags in shared.tsx, TrustStep and ReviewStep move to the store, so the output panel can see them. `reset()`, `replaceModel` and a trust-kind switch clear `touched` for the fields they replace.
+- Produces in `issues.ts`: `splitPending(issues: Issue[], revealed: (id: string) => boolean): { pending: Issue[]; shown: Issue[] }`. An error is **pending** when it maps to a field (`focusIdFor(issue)` is non-null) and that field is not revealed. Warnings, infos and errors with no field are never pending.
+
+- [ ] **Step 1: Failing tests**
+  - Output panel: after adding S3 with no input, no `status-error` is shown. A neutral "To do" list shows "Enter the bucket name" with a Jump to link, using Cloudscape `StatusIndicator type="pending"`. The status line reads "1 to do, 0 errors, 0 warnings, 1 info".
+  - After the bucket input blurs while empty or invalid, the same issue shows as a red error and the "to do" count drops.
+  - GitHub Actions picked: there are 0 errors, and every trust error that maps to a field is a to-do. The owner+repo error has no path in core but maps by id to the owner field through `focusIdFor`.
+  - Export while there are to-dos: Export is still blocked. The blocked modal lists them as errors, because opening the blocked view calls `revealAllErrors()`, which already exists. Jump to still works.
+  - To-do text: for a pending issue whose field is empty, the panel shows a short instruction instead of the validator message. Map it from a table in `issues.ts` keyed by issue id, falling back to the core message:
+    - S3 bucket: "Enter the bucket name";
+    - GitHub owner: "Enter the GitHub owner";
+    - GitHub repo: "Enter the repository name";
+    - GitHub account / trusted account ID: "Enter the 12-digit AWS account ID";
+    - generic ARN scope: "Choose which resources".
+    Add entries for every id the current editors can produce on an empty field. Errors on non-empty, invalid values keep the core message.
+  - Pending errors still block Copy and Export exactly as errors do today; only the presentation changes.
+- [ ] **Step 2: Run them and confirm they fail.**
+- [ ] **Step 3: Implement.**
+- [ ] **Step 4: Gates including e2e.** Extend `export-blocked.spec.ts`: add S3, check that the panel shows "To do" and no error, click Export, and check that the blocked list shows the error.
+- [ ] **Step 5: Commit** (`fix(ui): ...`).
+
+### Task 9: First-run guided tour
+
+**Files:**
+- Create: `src/ui/builder/tour/Tour.tsx`, `src/ui/builder/tour/steps.ts`, `src/state/tour.ts`
+- Modify: `src/ui/builder/Builder.tsx` (mount), `src/ui/AppShell.tsx` (a "Take the tour" item, builder route only), `tests/e2e/fixtures.ts` (preset the "seen" flag so existing specs aren't covered by the tour)
+- Test: `src/ui/builder/tour/Tour.test.tsx`, `src/state/tour.test.ts`, `tests/e2e/tour.spec.ts`
+
+**Interfaces:**
+- Produces `useTourStore` with:
+  - `{ open: boolean; index: number; start(): void; next(): void; back(): void; close(): void }`;
+  - the persisted flag `localStorage["rolecraft.tour.v1"] = "seen"`, set on close or finish.
+- `steps.ts` exports `TOUR_STEPS: { target: string; title: string; body: string }[]`. `target` is a `data-tour` attribute value added to the anchor element.
+
+**Behaviour, with exact copy:**
+- **When it auto-starts:** on the first visit to `/builder` on desktop (≥ 1024 px) when the flag is not set, **unless** the URL carries a `#s=` share link. Someone opening a shared role sees the role first, and the tour stays available from the menu.
+- **What it is:** a popover card next to the highlighted region. Behind it, a dim backdrop with a cut-out around the target, drawn with a CSS outline/box-shadow on a positioned overlay, not canvas. The card has the title, the body, "1 of 5", and **Back**, **Next** (or **Done** on the last step) and **Skip tour**.
+- **Keyboard and screen readers:** Esc skips. Focus moves into the card on open and returns to the previous element on close. The card is `role="dialog"` with `aria-modal="false"` and `aria-labelledby` set to the title.
+- **Reduced motion:** with `prefers-reduced-motion`, there is no transition.
+- **Steps (targets and copy):**
+  1. `sidebar`: "Pick AWS services". "Search or browse services here. Each one you add becomes a permission you can fine-tune."
+  2. `steps`: "Three steps". "Choose who can use the role, what it can do, then review and export. You can move between steps at any time."
+  3. `workspace`: "Describe access in plain English". "Pick what each service may do and on which resources. Sentences and Grid are two views of the same permissions."
+  4. `output`: "Your policy, live". "The policy, trust policy and scripts update as you go. Anything that still needs your input is listed here."
+  5. `actions`: "Copy, export or share". "Copy the JSON, download ready-to-run scripts and templates, or share a link. Nothing leaves your browser."
+- **Replay:** "Take the tour" in the top nav restarts from step 1.
+- Below 1024 px the tour never shows, because the builder is replaced by the desktop-only card.
+
+- [ ] **Step 1: Failing tests**
+  - Store: `start` / `next` / `back` / `close`; `close` persists the flag; `next` on the last step closes.
+  - Tour component:
+    - it auto-opens only when the flag is unset and there is no `#s=` in the URL;
+    - the card shows the title, the body and "1 of 5";
+    - Esc closes and sets the flag;
+    - focus returns to the opener;
+    - all five `data-tour` targets exist in a rendered BuilderPage.
+  - E2E `tour.spec.ts`:
+    - a fresh context, with the flag not preset, sees the tour;
+    - clicking Next 4 times then Done hides it;
+    - after a reload it doesn't reappear;
+    - "Take the tour" brings it back;
+    - zero console errors.
+- [ ] **Step 2: Run them and confirm they fail.**
+- [ ] **Step 3: Implement.** No new dependency.
+- [ ] **Step 4: Gates including e2e.** All existing specs must still pass, with the flag preset in their fixtures.
+- [ ] **Step 5: Commit** (`feat(ui): first-run guided tour`).
