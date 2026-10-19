@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 import { AppRoutes } from "./App";
+import { REPO_URL } from "./links";
 
 describe("App shell", () => {
   it("renders the brand", () => {
@@ -49,5 +50,17 @@ describe("App shell", () => {
     expect(screen.queryByRole("dialog", { name: "Pick AWS services" })).toBeNull();
     fireEvent.click(screen.getAllByRole("button", { name: "Take the tour", hidden: true })[0]!);
     expect(screen.getByRole("dialog", { name: "Pick AWS services" })).toBeInTheDocument();
+  });
+
+  it("links GitHub to the RoleCraft repo", () => {
+    expect(REPO_URL).toBe("https://github.com/Aisu2635/rolecraft");
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <AppRoutes />
+      </MemoryRouter>,
+    );
+    const links = screen.getAllByRole("link", { name: /GitHub/, hidden: true });
+    expect(links.length).toBeGreaterThan(0);
+    for (const link of links) expect(link).toHaveAttribute("href", REPO_URL);
   });
 });

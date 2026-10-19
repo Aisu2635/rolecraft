@@ -4,6 +4,7 @@ import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useThemeStore } from "../state/theme";
 import { requestTour } from "../state/tour";
 import { useIsDesktop } from "./common/useIsDesktop";
+import { REPO_URL } from "./links";
 
 const logoSvg =
   '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#ff9900"/><circle cx="23" cy="32" r="8" fill="none" stroke="#16191f" stroke-width="5"/><path d="M31 32h20M44 32v9M51 32v7" fill="none" stroke="#16191f" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
@@ -37,7 +38,7 @@ export function AppShell() {
             {
               type: "button",
               text: "GitHub",
-              href: "https://github.com/",
+              href: REPO_URL,
               external: true,
               externalIconAriaLabel: "(opens in a new tab)",
             },
