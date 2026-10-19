@@ -48,8 +48,9 @@ for (const viewport of [
       console.log(`${viewport.width}×${viewport.height}: ${JSON.stringify(m)}`);
       expect(m.pageScrollY, "page scrolls vertically").toBeLessThanOrEqual(0);
       expect(m.pageScrollX, "page scrolls horizontally").toBeLessThanOrEqual(0);
-      expect(m.wsTop).toBe(m.nav);
-      expect(m.wsBottom).toBe(m.innerHeight);
+      // Fractional pixels differ with zoom and fonts, so the edges match to within 1 px.
+      expect(Math.abs(m.wsTop - m.nav), "workspace top vs top nav height").toBeLessThanOrEqual(1);
+      expect(Math.abs(m.wsBottom - m.innerHeight), "workspace bottom vs window height").toBeLessThanOrEqual(1);
       for (const c of m.cols) {
         expect(c.overflowY, c.label).toBe("auto");
         expect(c.horizontal, `${c.label} scrolls horizontally`).toBe(false);

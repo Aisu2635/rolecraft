@@ -4,6 +4,7 @@ import { expect as baseExpect, test as base, type Download, type Locator, type P
 import { strFromU8, unzipSync } from "fflate";
 import { exportAll } from "../../src/core/export";
 import { REFERENCE_CASES } from "../../src/core/export/__fixtures__/cases";
+import { VARIANT_CASES } from "../../src/core/export/__fixtures__/variants";
 import { roleModelSchema, type RoleModel } from "../../src/core/model/model";
 
 /** Collects a page's console errors and uncaught exceptions into `errors`. */
@@ -57,9 +58,11 @@ export async function readZip(download: Download): Promise<Record<string, string
   return Object.fromEntries(Object.entries(entries).map(([name, data]) => [name, strFromU8(data)]));
 }
 
-/** The files the core exports for a reference case: the golden the UI's ZIP must equal byte for byte. */
+/**
+ * The files the core exports for a reference (or variant) case: the golden the UI's ZIP must equal byte for byte.
+ */
 export function referenceFiles(name: string): Record<string, string> {
-  const make = REFERENCE_CASES[name];
+  const make = REFERENCE_CASES[name] ?? VARIANT_CASES[name];
   if (!make) throw new Error(`No reference case ${name}`);
   const outcome = exportAll(make());
   if (!outcome.ok) throw new Error(`Reference case ${name} does not export: ${outcome.reason}`);
