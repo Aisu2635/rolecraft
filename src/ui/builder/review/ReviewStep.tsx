@@ -7,7 +7,7 @@ import SpaceBetween from "@cloudscape-design/components/space-between";
 import { useCallback, type JSX, type ReactNode } from "react";
 import { validateModelValues } from "../../../core/validate/values";
 import { isRevealed, useBuilderStore } from "../../../state/builder";
-import { useDerived } from "../../../state/derive";
+import { useDerivedOutput } from "../../../state/derive";
 import { errorTextAt, onReviewField } from "../issues";
 import { IssuesList } from "../output/IssuesList";
 import { Summary } from "../output/Summary";
@@ -46,7 +46,7 @@ const MODES = [
 export function ReviewStep(): JSX.Element {
   const model = useBuilderStore((s) => s.model);
   const setFields = useBuilderStore((s) => s.setFields);
-  const derived = useDerived();
+  const derived = useDerivedOutput();
   const issues = derived.kind === "ready" ? derived.input.result.issues : validateModelValues(model);
   const err = (path: string): string | undefined => errorTextAt(issues, path);
   const nameDescription =

@@ -9,7 +9,7 @@ import Tiles from "@cloudscape-design/components/tiles";
 import { useCallback, type JSX, type ReactNode } from "react";
 import type { Trust } from "../../../core/model/model";
 import { isRevealed, useBuilderStore } from "../../../state/builder";
-import { useDerived } from "../../../state/derive";
+import { useDerivedOutput } from "../../../state/derive";
 import { defaultTrust } from "../../../state/model-ops";
 import { errorTextAt } from "../issues";
 import { useFocusTarget } from "../useFocusTarget";
@@ -200,7 +200,7 @@ function PrincipalFields(props: { trust: Principal; error(path: string): string 
 export function TrustStep(): JSX.Element {
   const trust = useBuilderStore((s) => s.model.trust);
   const setTrust = useBuilderStore((s) => s.setTrust);
-  const derived = useDerived();
+  const derived = useDerivedOutput();
   const issues = derived.kind === "ready" ? derived.input.result.issues : [];
   // The trust builder reports some problems without a path; match those by id.
   const error = (path: string, id?: string): string | undefined =>

@@ -8,7 +8,7 @@ import { useCallback, useState, type JSX } from "react";
 import type { Grant } from "../../../core/model/model";
 import type { Issue, SlimService } from "../../../core/types";
 import { useBuilderStore } from "../../../state/builder";
-import { useDerived } from "../../../state/derive";
+import { useDerivedOutput } from "../../../state/derive";
 import { grantIssues, shownOnRow } from "../issues";
 import { ScopeEditor } from "../scope/ScopeEditor";
 import { SERVICE_SEARCH_ID } from "../sidebar/ServiceSidebar";
@@ -120,7 +120,7 @@ function GrantRow(props: { grant: Grant; issues: Issue[] }): JSX.Element {
 
 export function SentenceEditor(): JSX.Element {
   const grants = useBuilderStore((s) => s.model.grants);
-  const derived = useDerived();
+  const derived = useDerivedOutput();
   const issues = derived.kind === "ready" ? derived.input.result.issues : [];
   return (
     <SpaceBetween size="m">

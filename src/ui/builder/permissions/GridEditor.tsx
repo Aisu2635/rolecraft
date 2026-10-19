@@ -13,7 +13,7 @@ import { MODULES } from "../../../core/engine/modules/registry";
 import type { Grant } from "../../../core/model/model";
 import { ACCESS_LEVELS, type AccessLevel, type Issue, type SlimService } from "../../../core/types";
 import { useBuilderStore } from "../../../state/builder";
-import { useDerived } from "../../../state/derive";
+import { useDerivedOutput } from "../../../state/derive";
 import { moduleFor, newGrantFor } from "../../../state/model-ops";
 import { grantIssues, shownOnRow, todoText } from "../issues";
 import { usePendingSplit } from "../output/IssuesList";
@@ -265,7 +265,7 @@ function EditScopeModal(props: { grantId: string; issues: Issue[]; onClose(): vo
 /** One container per service, one table row per grant. Edits the same model as the sentence editor. */
 export function GridEditor(): JSX.Element {
   const grants = useBuilderStore((s) => s.model.grants);
-  const derived = useDerived();
+  const derived = useDerivedOutput();
   const issues = derived.kind === "ready" ? derived.input.result.issues : [];
   const [editing, setEditing] = useState<string | null>(null);
   const keys = [...new Set(grants.map((g) => g.service))];

@@ -2,7 +2,7 @@ import Alert from "@cloudscape-design/components/alert";
 import SegmentedControl from "@cloudscape-design/components/segmented-control";
 import SpaceBetween from "@cloudscape-design/components/space-between";
 import { useMemo, useState, type JSX } from "react";
-import type { ExportInput } from "../../core/export/types";
+import type { ExportInput, ExportOutcome } from "../../core/export/types";
 import { CodeView } from "../builder/output/CodeView";
 import { IssuesList } from "../builder/output/IssuesList";
 import type { ExtraTab } from "../builder/output/OutputPanel";
@@ -27,14 +27,20 @@ interface Body {
   copyText?: string;
 }
 
+/** What every format tab shows, exported once per model and shared by the tabs. */
+interface Exported {
+  outcome: ExportOutcome;
+  sections: ReturnType<Exporters["applySections"]>;
+}
+
 function body(
   format: Format,
   input: ExportInput,
-  mod: Exporters | undefined,
+  exported: Exported | undefined,
   status: Pick<ExportersState, "status" | "retry" | "stale">,
 ): Body {
-  if (!mod) return { node: <ExporterStatus state={status} /> };
-  const outcome = mod.exportAll(input);
+  if (!exported) return { node: <ExporterStatus state={status} /> };
+  const { outcome, sections } = exported;
   if (!outcome.ok) {
     return {
       node: (
@@ -47,7 +53,6 @@ function body(
   }
   const spec = FORMAT[format];
   const file = outcome.files.find((f) => f.language === spec.language);
-  const sections = mod.applySections(input);
   const text = [sections[0], sections.find((s) => s.title === spec.section)]
     .filter((s) => s !== undefined)
     .map((s) => s.markdown)
@@ -72,10 +77,15 @@ export function useFormatTabs(input: ExportInput | null, active: string): ExtraT
   const [shell, setShell] = useState<Shell>("bash");
   if (!started && FORMAT_TABS.includes(active)) setStarted(true);
   const { status, mod, retry, stale } = useExporters(started);
+  // One export per model (and loaded module), shared by the three tabs.
+  const exported = useMemo(
+    () => (mod && input ? { outcome: mod.exportAll(input), sections: mod.applySections(input) } : undefined),
+    [mod, input],
+  );
   return useMemo(() => {
     if (!input) return [];
     const make = (id: string, label: string, format: Format, lead?: JSX.Element): ExtraTab => {
-      const b = body(format, input, mod, { status, retry, stale });
+      const b = body(format, input, exported, { status, retry, stale });
       return {
         id,
         label,
@@ -106,5 +116,5 @@ export function useFormatTabs(input: ExportInput | null, active: string): ExtraT
       make("terraform", "Terraform", "terraform"),
       make("cloudformation", "CloudFormation", "cloudformation"),
     ];
-  }, [input, mod, status, retry, stale, shell]);
+  }, [input, exported, status, retry, stale, shell]);
 }

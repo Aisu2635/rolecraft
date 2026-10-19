@@ -25,7 +25,8 @@ export function ExportModal(props: { visible: boolean; onDismiss(): void; input:
   const { input } = props;
   const exporters = useExporters(props.visible);
   const { mod } = exporters;
-  const outcome = useMemo(() => (mod ? mod.exportAll(input) : undefined), [mod, input]);
+  // Only while open: a closed modal must not export again on every edit.
+  const outcome = useMemo(() => (mod && props.visible ? mod.exportAll(input) : undefined), [mod, input, props.visible]);
   const [tab, setTab] = useState<string>();
   const blocked = props.visible && outcome !== undefined && !outcome.ok;
   // The blocked view lists every error as an error, to-dos included, and the builder's fields show them too.

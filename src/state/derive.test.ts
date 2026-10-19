@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createEmptyModel, type Grant } from "../core/model/model";
 import type { SlimService } from "../core/types";
 import type { CatalogState, LoadStatus } from "./catalog";
@@ -81,5 +81,35 @@ describe("useDerived", () => {
     });
     expect(result.current.kind).toBe("ready");
     useBuilderStore.getState().reset();
+  });
+});
+
+describe("useDerivedOutput", () => {
+  it("reads the one derived output that DerivedProvider computes, and follows the model", async () => {
+    const { renderHook, act } = await import("@testing-library/react");
+    const { createElement } = await import("react");
+    const { createCatalogStore, CatalogContext } = await import("./catalog");
+    const { createLoader } = await import("../core/catalog/loader");
+    const { useBuilderStore } = await import("./builder");
+    const { DerivedProvider, useDerivedOutput } = await import("./derive");
+    const store = createCatalogStore(createLoader(async (p) => JSON.parse(readFileSync(`public${p}`, "utf8"))));
+    await store.getState().ensureServices(["s3"]);
+    useBuilderStore.getState().reset();
+    const wrapper = ({ children }: { children: React.ReactNode }) =>
+      createElement(CatalogContext.Provider, { value: store }, createElement(DerivedProvider, null, children));
+    const { result } = renderHook(() => [useDerivedOutput(), useDerivedOutput()] as const, { wrapper });
+    expect(result.current[0]).toBe(result.current[1]);
+    expect(result.current[0].kind === "ready" && result.current[0].input.model.grants).toEqual([]);
+    act(() => useBuilderStore.getState().addGrant(grant("a", "s3")));
+    expect(result.current[0].kind === "ready" && result.current[0].input.model.grants).toHaveLength(1);
+    useBuilderStore.getState().reset();
+  });
+
+  it("fails loudly outside DerivedProvider", async () => {
+    const { renderHook } = await import("@testing-library/react");
+    const { useDerivedOutput } = await import("./derive");
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(() => renderHook(() => useDerivedOutput())).toThrow("useDerivedOutput must be used inside DerivedProvider");
+    vi.restoreAllMocks();
   });
 });

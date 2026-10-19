@@ -1,4 +1,5 @@
 import Flashbar from "@cloudscape-design/components/flashbar";
+import { DerivedProvider } from "../../state/derive";
 import { useShareSync } from "../../state/share-sync";
 import { useEnsureCatalog } from "../../state/useEnsureCatalog";
 import { ExportButton } from "../export/ExportModal";
@@ -19,35 +20,37 @@ export function Builder() {
   useEnsureCatalog();
   const { invalidLink, dismiss } = useShareSync();
   return (
-    <BuilderWorkspace
-      banner={
-        invalidLink && (
-          <Flashbar
-            items={[
-              {
-                type: "warning",
-                dismissible: true,
-                onDismiss: dismiss,
-                dismissLabel: "Dismiss",
-                content: INVALID_LINK,
-              },
-            ]}
+    <DerivedProvider>
+      <BuilderWorkspace
+        banner={
+          invalidLink && (
+            <Flashbar
+              items={[
+                {
+                  type: "warning",
+                  dismissible: true,
+                  onDismiss: dismiss,
+                  dismissLabel: "Dismiss",
+                  content: INVALID_LINK,
+                },
+              ]}
+            />
+          )
+        }
+        sidebar={<ServiceSidebar />}
+        steps={[
+          <TrustStep key="0" />,
+          <PermissionsStep key="1" />,
+          <ReviewStep key="2" />,
+        ]}
+        output={
+          <OutputPanel
+            useExtraTabs={useFormatTabs}
+            actions={(input) => <ExportButton input={input} />}
+            share={<ShareButton />}
           />
-        )
-      }
-      sidebar={<ServiceSidebar />}
-      steps={[
-        <TrustStep key="0" />,
-        <PermissionsStep key="1" />,
-        <ReviewStep key="2" />,
-      ]}
-      output={
-        <OutputPanel
-          useExtraTabs={useFormatTabs}
-          actions={(input) => <ExportButton input={input} />}
-          share={<ShareButton />}
-        />
-      }
-    />
+        }
+      />
+    </DerivedProvider>
   );
 }

@@ -10,7 +10,7 @@ import type { ExportInput } from "../../../core/export/types";
 import { policyLimit } from "../../../core/validate/size";
 import { useBuilderStore } from "../../../state/builder";
 import { CatalogContext } from "../../../state/catalog";
-import { useDerived } from "../../../state/derive";
+import { useDerivedOutput } from "../../../state/derive";
 import { useCopy } from "../../common/clipboard";
 import { CodeView } from "./CodeView";
 import { IssuesList, usePendingSplit } from "./IssuesList";
@@ -31,7 +31,7 @@ export interface OutputPanelProps {
 }
 
 export function OutputPanel(props: OutputPanelProps = {}): JSX.Element {
-  const derived = useDerived();
+  const derived = useDerivedOutput();
   const catalog = useContext(CatalogContext);
   const model = useBuilderStore((s) => s.model);
   const { copy, modal } = useCopy();

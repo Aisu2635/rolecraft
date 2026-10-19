@@ -1,4 +1,4 @@
-import { useContext, useMemo } from "react";
+import { createContext, createElement, useContext, useMemo, type JSX, type ReactNode } from "react";
 import { createCatalog } from "../core/catalog/catalog";
 import { explain } from "../core/explain/explain";
 import type { ExportInput } from "../core/export/types";
@@ -29,6 +29,7 @@ export function deriveOutput(
   return { kind: "ready", input: { model, result: generate(model, catalog), summary: explain(model, catalog) }, missing };
 }
 
+/** Derives the output from the builder model and the catalog. Internal: DerivedProvider calls it once for the builder. */
 export function useDerived(): Derived {
   const model = useBuilderStore((s) => s.model);
   const store = useContext(CatalogContext);
@@ -36,4 +37,19 @@ export function useDerived(): Derived {
   const services = store((s) => s.services);
   const status = store((s) => s.status);
   return useMemo(() => deriveOutput(model, { index, services, status }), [model, index, services, status]);
+}
+
+/** The builder's one derived output, computed once per edit by DerivedProvider and read by every panel. */
+export const DerivedContext = createContext<Derived | null>(null);
+
+/** Computes the derived output once, for every `useDerivedOutput()` below it. */
+export function DerivedProvider(props: { children?: ReactNode }): JSX.Element {
+  return createElement(DerivedContext.Provider, { value: useDerived() }, props.children);
+}
+
+/** The derived output of the builder (see DerivedProvider). */
+export function useDerivedOutput(): Derived {
+  const derived = useContext(DerivedContext);
+  if (!derived) throw new Error("useDerivedOutput must be used inside DerivedProvider");
+  return derived;
 }
