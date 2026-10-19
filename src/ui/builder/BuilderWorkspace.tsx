@@ -40,7 +40,7 @@ export function BuilderWorkspace(props: {
         {props.banner}
         <StepHeader step={step} onSelect={setStep} />
         <div className="rc-step-body">
-          <h2 ref={heading} tabIndex={-1} className="rc-visually-hidden">
+          <h2 ref={heading} tabIndex={-1} className="rc-step-title">
             {STEP_LABELS[step]}
           </h2>
           {props.steps[step]}
