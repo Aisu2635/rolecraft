@@ -1,5 +1,5 @@
 import Button from "@cloudscape-design/components/button";
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { useBuilderStore, type Step } from "../../state/builder";
 import { StepHeader } from "./StepHeader";
 
@@ -12,6 +12,16 @@ export function BuilderWorkspace(props: {
 }) {
   const step = useBuilderStore((s) => s.step);
   const setStep = useBuilderStore((s) => s.setStep);
+  const target = useBuilderStore((s) => s.focusTarget);
+  // Claimers sit inside the step and claim in their own effects, which run before this one. A target still set a
+  // tick later has no claimer (e.g. a new grant while the Grid is shown); drop it so it cannot steal focus later.
+  useEffect(() => {
+    if (target === null) return;
+    const t = setTimeout(() => {
+      if (useBuilderStore.getState().focusTarget === target) useBuilderStore.getState().focus(null);
+    }, 0);
+    return () => clearTimeout(t);
+  }, [target]);
   return (
     <div className="rc-ws">
       <aside className="rc-col rc-side" aria-label="Services and templates">

@@ -1,9 +1,11 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import type { ReactNode } from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useBuilderStore } from "../../state/builder";
 import { BuilderWorkspace } from "./BuilderWorkspace";
+import { useFocusTarget } from "./useFocusTarget";
 
 // Vitest serves CSS imports empty, so the stylesheet is read from disk.
 const css = readFileSync(resolve(process.cwd(), "src/ui/global.css"), "utf8");
@@ -71,5 +73,44 @@ describe("BuilderWorkspace", () => {
     expect(rule("#root:has(.rc-ws)")).toMatch(/display: flex/);
     expect(rule("#root:has(.rc-ws)")).toMatch(/height: 100vh/);
     expect(rule(".rc-ws")).toMatch(/flex: 1 1 0/);
+  });
+});
+
+describe("BuilderWorkspace focus targets", () => {
+  function Claimer(props: { id: string }) {
+    const ref = useFocusTarget<HTMLDivElement>(props.id);
+    return (
+      <div ref={ref}>
+        <input aria-label={props.id} />
+      </div>
+    );
+  }
+  const withSteps = (step1: ReactNode) =>
+    render(<BuilderWorkspace sidebar={null} steps={[<p key="0">t</p>, step1, <p key="2">r</p>]} output={null} />);
+
+  it("clears a target that nothing on the shown step claims, so it cannot steal focus later", async () => {
+    vi.useFakeTimers();
+    try {
+      withSteps(<p key="1">p</p>);
+      act(() => {
+        useBuilderStore.getState().setStep(1);
+        useBuilderStore.getState().focus("grant:g1");
+      });
+      expect(useBuilderStore.getState().focusTarget).toBe("grant:g1");
+      act(() => vi.runAllTimers());
+      expect(useBuilderStore.getState().focusTarget).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a claimed target still focuses its field", () => {
+    withSteps(<Claimer key="1" id="grant:g1" />);
+    act(() => {
+      useBuilderStore.getState().setStep(1);
+      useBuilderStore.getState().focus("grant:g1");
+    });
+    expect(screen.getByLabelText("grant:g1")).toHaveFocus();
+    expect(useBuilderStore.getState().focusTarget).toBeNull();
   });
 });
