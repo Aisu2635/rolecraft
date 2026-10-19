@@ -121,6 +121,28 @@ describe("GridEditor", () => {
     expect(grants()[0]!.scope).toEqual(S3.scope);
   });
 
+  it("a generic grant on a module service shows its levels read-only, with Edit in Sentences", async () => {
+    const generic: Grant = { id: "s3g", service: "s3", scope: { type: "all" }, access: { type: "levels", levels: ["List", "Read"] } };
+    await setup(S3, generic);
+    const [, row] = bodyRows("Amazon S3");
+    expect(within(row!).queryAllByRole("radio")).toHaveLength(0);
+    expect(within(row!).getByText("List, Read")).toBeInTheDocument();
+    act(() => store().setEditor("grid"));
+    fireEvent.click(within(row!).getByRole("button", { name: "Edit in Sentences" }));
+    expect(store().editor).toBe("sentences");
+    expect(store().focusTarget).toBe("grant:s3g");
+    // The module row keeps its presets.
+    expect(within(bodyRows("Amazon S3")[0]!).getAllByRole("radio")).toHaveLength(7);
+  });
+
+  it("a generic actions grant on a module service shows its action count read-only", async () => {
+    const generic: Grant = { id: "s3h", service: "s3", scope: { type: "all" }, access: { type: "actions", actions: ["GetObject"] } };
+    await setup(generic);
+    const [row] = bodyRows("Amazon S3");
+    expect(within(row!).queryAllByRole("radio")).toHaveLength(0);
+    expect(within(row!).getByText("1 individual action")).toBeInTheDocument();
+  });
+
   it("edits the scope in a modal with the same scope editor", async () => {
     await setup(S3);
     const [row] = bodyRows("Amazon S3");

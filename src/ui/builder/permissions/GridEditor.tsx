@@ -57,9 +57,36 @@ function PresetCell(props: { grant: Grant; preset: string; label: string }): JSX
       name={"preset-" + grant.id}
       aria-label={`${label}, ${scopeSummary(grant)}`}
       checked={grant.access.type === "preset" && grant.access.preset === preset}
-      disabled={!grant.module}
       onChange={() => updateGrant(grant.id, (g) => ({ ...g, access: { type: "preset", preset } }))}
     />
+  );
+}
+
+/**
+ * A generic grant (no module) on a service whose columns are module presets: the presets do not apply, so its access
+ * is shown read-only, with a way to edit it where it can be.
+ */
+function GenericAccessCell(props: { grant: Grant }): JSX.Element {
+  const { access, id } = props.grant;
+  const n = access.type === "actions" ? access.actions.length : 0;
+  const text =
+    access.type === "levels"
+      ? access.levels.join(", ")
+      : access.type === "actions"
+        ? `${n} individual ${n === 1 ? "action" : "actions"}`
+        : access.preset;
+  const edit = (): void => {
+    const s = useBuilderStore.getState();
+    s.setEditor("sentences");
+    s.focus("grant:" + id);
+  };
+  return (
+    <SpaceBetween size="xs" direction="horizontal" alignItems="center">
+      <span>{text}</span>
+      <Button variant="inline-link" onClick={edit}>
+        Edit in Sentences
+      </Button>
+    </SpaceBetween>
   );
 }
 
@@ -120,10 +147,12 @@ function columnsFor(svc: SlimService, name: string, onEdit: (id: string) => void
   };
   if (presets.length > 0) {
     const cols = presets.map(
-      (p): Column => ({
+      (p, i): Column => ({
         id: "preset-" + p.id,
         header: p.label,
-        cell: (g) => <PresetCell grant={g} preset={p.id} label={p.label} />,
+        // A generic grant's access shows once, in the first preset column; its other preset cells stay empty.
+        cell: (g) =>
+          g.module ? <PresetCell grant={g} preset={p.id} label={p.label} /> : i === 0 ? <GenericAccessCell grant={g} /> : null,
       }),
     );
     return [scope, ...cols, remove];
