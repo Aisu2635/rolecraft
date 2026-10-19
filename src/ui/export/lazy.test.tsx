@@ -1,4 +1,4 @@
-import { cleanup, renderHook, waitFor } from "@testing-library/react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Exporters } from "./lazy";
 
@@ -43,5 +43,49 @@ describe("useExporters", () => {
     rerender({ on: true });
     await waitFor(() => expect(result.current.status).toBe("ready"));
     expect(typeof result.current.mod?.exportAll).toBe("function");
+  });
+});
+
+describe("useExporters after a redeploy", () => {
+  it("a first failure is retryable; a second failure in a row marks the app stale", async () => {
+    lazy.resetExportersForTests(() => Promise.reject(new Error("MIME type")));
+    const { result } = renderHook(() => lazy.useExporters(true));
+    await waitFor(() => expect(result.current.status).toBe("error"));
+    expect(result.current.stale).toBe(false);
+    act(() => result.current.retry());
+    await waitFor(() => expect(result.current.stale).toBe(true));
+    expect(result.current.status).toBe("error");
+  });
+
+  it("a success resets the count of failures in a row", async () => {
+    const importer = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce(fake)
+      .mockRejectedValue(new Error("never"));
+    lazy.resetExportersForTests(importer);
+    const { result } = renderHook(() => lazy.useExporters(true));
+    await waitFor(() => expect(result.current.status).toBe("error"));
+    act(() => result.current.retry());
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+    expect(result.current.stale).toBe(false);
+  });
+
+  it("Vite's preloadError event marks the app stale and is handled (preventDefault)", async () => {
+    lazy.resetExportersForTests(() => new Promise<Exporters>(() => {}));
+    const { result } = renderHook(() => lazy.useExporters(true));
+    const e = new Event("vite:preloadError", { cancelable: true });
+    act(() => {
+      window.dispatchEvent(e);
+    });
+    expect(e.defaultPrevented).toBe(true);
+    expect(result.current.stale).toBe(true);
+  });
+
+  it("a load that resolves to nothing (a handled preload error) is a failure, not ready", async () => {
+    lazy.resetExportersForTests(() => Promise.resolve(undefined as unknown as Exporters));
+    const { result } = renderHook(() => lazy.useExporters(true));
+    await waitFor(() => expect(result.current.status).toBe("error"));
+    expect(result.current.mod).toBeUndefined();
   });
 });

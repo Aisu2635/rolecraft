@@ -31,7 +31,7 @@ function body(
   format: Format,
   input: ExportInput,
   mod: Exporters | undefined,
-  status: Pick<ExportersState, "status" | "retry">,
+  status: Pick<ExportersState, "status" | "retry" | "stale">,
 ): Body {
   if (!mod) return { node: <ExporterStatus state={status} /> };
   const outcome = mod.exportAll(input);
@@ -71,11 +71,11 @@ export function useFormatTabs(input: ExportInput | null, active: string): ExtraT
   const [started, setStarted] = useState(false);
   const [shell, setShell] = useState<Shell>("bash");
   if (!started && FORMAT_TABS.includes(active)) setStarted(true);
-  const { status, mod, retry } = useExporters(started);
+  const { status, mod, retry, stale } = useExporters(started);
   return useMemo(() => {
     if (!input) return [];
     const make = (id: string, label: string, format: Format, lead?: JSX.Element): ExtraTab => {
-      const b = body(format, input, mod, { status, retry });
+      const b = body(format, input, mod, { status, retry, stale });
       return {
         id,
         label,
@@ -106,5 +106,5 @@ export function useFormatTabs(input: ExportInput | null, active: string): ExtraT
       make("terraform", "Terraform", "terraform"),
       make("cloudformation", "CloudFormation", "cloudformation"),
     ];
-  }, [input, mod, status, retry, shell]);
+  }, [input, mod, status, retry, stale, shell]);
 }
