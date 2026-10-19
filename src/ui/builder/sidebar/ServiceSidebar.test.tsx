@@ -43,6 +43,14 @@ describe("ServiceSidebar", () => {
     expect(within(results).getAllByRole("button")[0]).toHaveTextContent("Amazon S3");
   });
 
+  it("finds a service by its full AWS name", async () => {
+    setup();
+    await screen.findByText("Popular");
+    fireEvent.change(screen.getByLabelText("Search services"), { target: { value: "Simple Storage" } });
+    const results = await screen.findByRole("list", { name: "Search results" });
+    expect(within(results).getAllByRole("button")[0]).toHaveTextContent("Amazon S3");
+  });
+
   it("says when nothing matches", async () => {
     setup();
     await screen.findByText("Popular");
