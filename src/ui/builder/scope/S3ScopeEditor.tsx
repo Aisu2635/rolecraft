@@ -51,6 +51,8 @@ export function S3ScopeEditor(props: { data: unknown; issues: Issue[]; onChange(
           removeNoun="prefix"
           addLabel="Add prefix"
           values={f.prefixes}
+          placeholder="Folder, e.g. reports/"
+          focusLoneEmpty
           min={1}
           issues={props.issues}
           pathOf={(i) => `data.prefixes[${i}]`}

@@ -54,6 +54,23 @@ describe("S3ScopeEditor", () => {
     expect(screen.getByRole("button", { name: "Remove prefix 1" })).toBeDisabled();
   });
 
+  it("Add prefix on a lone empty row focuses that row instead of adding a second empty one", () => {
+    const seen = setup({ bucket: "b-ucket", prefixes: [""] });
+    expect(screen.getByLabelText("Prefix 1")).toHaveAttribute("placeholder", "Folder, e.g. reports/");
+    fireEvent.click(screen.getByRole("button", { name: "Add prefix" }));
+    expect(seen).toEqual([]);
+    expect(screen.getAllByLabelText(/^Prefix \d$/)).toHaveLength(1);
+    expect(screen.getByLabelText("Prefix 1")).toHaveFocus();
+    fireEvent.change(screen.getByLabelText("Prefix 1"), { target: { value: "reports/" } });
+    expect(data(seen.at(-1))?.prefixes).toEqual(["reports/"]);
+  });
+
+  it("Add prefix appends a row after filled rows", () => {
+    const seen = setup({ bucket: "b-ucket", prefixes: ["a/", "b/"] });
+    fireEvent.click(screen.getByRole("button", { name: "Add prefix" }));
+    expect(data(seen.at(-1))?.prefixes).toEqual(["a/", "b/", ""]);
+  });
+
   it("toggles navigation", () => {
     const seen = setup({ bucket: "b-ucket", prefixes: ["a/"], allowNavigation: false });
     fireEvent.click(screen.getByLabelText("Allow navigating to the folder"));
