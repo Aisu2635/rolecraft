@@ -10,7 +10,7 @@ test("a first visit shows the tour; Done hides it for good and Take the tour bri
   await expect(card).toBeVisible();
   await expect(card).toContainText("1 of 5");
   await expect(card).toBeFocused();
-  await expect(card.getByRole("button", { name: "Previous tour stop" })).toBeDisabled();
+  await expect(card.getByRole("button", { name: "Back to previous tour stop" })).toBeDisabled();
 
   for (let i = 0; i < 4; i++) await page.getByRole("dialog").getByRole("button", { name: "Next tour stop" }).click();
   const last = page.getByRole("dialog", { name: "Copy, export or share" });
@@ -57,7 +57,7 @@ test("the card shows a focus ring when it has keyboard focus", async ({ page }) 
   // Back from step 2 from the keyboard disables Back, so focus moves to the card, after a keyboard interaction.
   await card.getByRole("button", { name: "Next tour stop" }).focus();
   await page.keyboard.press("Enter");
-  await page.getByRole("dialog").getByRole("button", { name: "Previous tour stop" }).focus();
+  await page.getByRole("dialog").getByRole("button", { name: "Back to previous tour stop" }).focus();
   await page.keyboard.press("Enter");
   await expect(card).toBeFocused();
   const outline = await card.evaluate((el) => getComputedStyle(el).outlineStyle + " " + getComputedStyle(el).outlineWidth);

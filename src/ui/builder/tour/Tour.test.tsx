@@ -63,10 +63,10 @@ describe("Tour", () => {
       "Search or browse services here. Each one you add becomes a permission you can fine-tune.",
     );
     expect(card).toHaveTextContent("1 of 5");
-    for (const name of ["Previous tour stop", "Next tour stop", "Skip tour"]) {
+    for (const name of ["Back to previous tour stop", "Next tour stop", "Skip tour"]) {
       expect(within(card).getByRole("button", { name })).toBeInTheDocument();
     }
-    expect(within(card).getByRole("button", { name: "Previous tour stop" })).toBeDisabled();
+    expect(within(card).getByRole("button", { name: "Back to previous tour stop" })).toBeDisabled();
     expect(card).toHaveFocus();
   });
 
@@ -89,7 +89,7 @@ describe("Tour", () => {
     fireEvent.click(within(card()).getByRole("button", { name: "Next tour stop" }));
     expect(card()).toHaveAccessibleName("Three steps");
     expect(card()).toHaveTextContent("2 of 5");
-    fireEvent.click(within(card()).getByRole("button", { name: "Previous tour stop" }));
+    fireEvent.click(within(card()).getByRole("button", { name: "Back to previous tour stop" }));
     expect(card()).toHaveAccessibleName("Pick AWS services");
     for (let i = 0; i < 4; i++) fireEvent.click(within(card()).getByRole("button", { name: "Next tour stop" }));
     expect(card()).toHaveAccessibleName("Copy, export or share");
@@ -159,7 +159,7 @@ describe("Tour", () => {
     ui();
     const card = () => screen.getByRole("dialog");
     expect(within(card()).getByRole("button", { name: "Next tour stop" })).toHaveTextContent(/^Next$/);
-    expect(within(card()).getByRole("button", { name: "Previous tour stop" })).toHaveTextContent(/^Back$/);
+    expect(within(card()).getByRole("button", { name: "Back to previous tour stop" })).toHaveTextContent(/^Back$/);
     for (let i = 0; i < 4; i++) fireEvent.click(within(card()).getByRole("button", { name: "Next tour stop" }));
     expect(within(card()).getByRole("button", { name: "Done" })).toHaveTextContent(/^Done$/);
   });
@@ -190,7 +190,7 @@ describe("Tour", () => {
     const card = screen.getByRole("dialog", { name: "Pick AWS services" });
     expect(card).toHaveFocus();
     fireEvent.click(within(card).getByRole("button", { name: "Next tour stop" }));
-    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Previous tour stop" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Back to previous tour stop" }));
     // Back is disabled on the first step, so focus is put back on the card rather than lost.
     expect(screen.getByRole("dialog")).toContainElement(document.activeElement as HTMLElement);
     fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });

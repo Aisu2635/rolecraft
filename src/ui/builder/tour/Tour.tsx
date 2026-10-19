@@ -248,7 +248,7 @@ export function Tour(): JSX.Element | null {
             Skip tour
           </Button>
           <div style={{ display: "flex", gap: spaceScaledXs, flexShrink: 0 }}>
-            <Button disabled={index === 0} ariaLabel="Previous tour stop" onClick={back}>
+            <Button disabled={index === 0} ariaLabel="Back to previous tour stop" onClick={back}>
               Back
             </Button>
             {/* Named apart from the builder's own Next and Back; Done ends the tour, so it keeps its label. */}
