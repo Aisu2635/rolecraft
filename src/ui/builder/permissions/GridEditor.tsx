@@ -6,7 +6,6 @@ import ExpandableSection from "@cloudscape-design/components/expandable-section"
 import Header from "@cloudscape-design/components/header";
 import Modal from "@cloudscape-design/components/modal";
 import SpaceBetween from "@cloudscape-design/components/space-between";
-import StatusIndicator from "@cloudscape-design/components/status-indicator";
 import Table, { type TableProps } from "@cloudscape-design/components/table";
 import { useState, type JSX } from "react";
 import { MODULES } from "../../../core/engine/modules/registry";
@@ -21,6 +20,7 @@ import { ScopeEditor } from "../scope/ScopeEditor";
 import { ActionPicker } from "./ActionPicker";
 import { ServiceUnavailable, useServiceInfo } from "./ServiceStatus";
 import { scopeSummary } from "./summary";
+import { StatusText } from "../../common/StatusText";
 
 const ACTIONS_HINT = "Clear the individual actions to use access levels.";
 type Column = TableProps.ColumnDefinition<Grant>;
@@ -207,14 +207,14 @@ function ServiceContainer(props: {
               columnDefinitions={columnsFor(svc, name, props.onEdit)}
             />
             {pending.map((i, n) => (
-              <StatusIndicator key={"p" + n} type="pending">
+              <StatusText key={"p" + n} type="pending">
                 {todoText(i, model)}
-              </StatusIndicator>
+              </StatusText>
             ))}
             {shown.map((i, n) => (
-              <StatusIndicator key={n} type={i.severity}>
+              <StatusText key={n} type={i.severity}>
                 {i.message}
-              </StatusIndicator>
+              </StatusText>
             ))}
           </SpaceBetween>
         ) : (

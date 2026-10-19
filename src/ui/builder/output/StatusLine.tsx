@@ -1,6 +1,6 @@
-import StatusIndicator from "@cloudscape-design/components/status-indicator";
 import type { JSX } from "react";
 import type { Issue } from "../../../core/types";
+import { StatusText } from "../../common/StatusText";
 
 const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
 
@@ -32,10 +32,10 @@ export function StatusLine(props: { issues: Issue[]; pending?: number; onActivat
           cursor: "pointer",
         }}
       >
-        {todo && <StatusIndicator type="pending">{todo}</StatusIndicator>}
-        <StatusIndicator type={count("error") > 0 ? "error" : todo ? "stopped" : "success"}>{errors}</StatusIndicator>
-        <StatusIndicator type="warning">{warnings}</StatusIndicator>
-        <StatusIndicator type="info">{info}</StatusIndicator>
+        {todo && <StatusText type="pending">{todo}</StatusText>}
+        <StatusText type={count("error") > 0 ? "error" : todo ? "stopped" : "success"}>{errors}</StatusText>
+        <StatusText type="warning">{warnings}</StatusText>
+        <StatusText type="info">{info}</StatusText>
       </button>
       <span className="rc-visually-hidden" aria-live="polite">
         {[todo, errors, warnings, info].filter(Boolean).join(", ")}

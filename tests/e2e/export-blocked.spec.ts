@@ -64,3 +64,17 @@ test("reloading the builder after adding S3 keeps the empty bucket a to-do", asy
   await expect(output.getByText("Enter the bucket name")).toBeVisible();
   await expect(page.locator("[class*=awsui_status-error]")).toHaveCount(0);
 });
+
+test("issue text in the output panel wraps between words, not mid-word", async ({ page }) => {
+  await page.goto("/builder");
+  await addService(page, "s3", "Amazon S3");
+  const text = page.getByRole("region", { name: "Generated output" }).getByText("Enter the bucket name");
+  await expect(text).toBeVisible();
+  const wrap = await text.evaluate((el) => {
+    const span = el.closest<HTMLElement>("[class*=awsui_container_]") ?? el;
+    const s = getComputedStyle(span);
+    return { wordBreak: s.wordBreak, overflowWrap: s.overflowWrap };
+  });
+  expect(wrap.wordBreak).not.toBe("break-all");
+  expect(wrap).toEqual({ wordBreak: "normal", overflowWrap: "anywhere" });
+});

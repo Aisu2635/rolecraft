@@ -3,7 +3,6 @@ import Button from "@cloudscape-design/components/button";
 import ExpandableSection from "@cloudscape-design/components/expandable-section";
 import Select from "@cloudscape-design/components/select";
 import SpaceBetween from "@cloudscape-design/components/space-between";
-import StatusIndicator from "@cloudscape-design/components/status-indicator";
 import { useCallback, useState, type JSX } from "react";
 import type { Grant } from "../../../core/model/model";
 import type { Issue, SlimService } from "../../../core/types";
@@ -16,6 +15,7 @@ import { useFocusTarget } from "../useFocusTarget";
 import { ServiceUnavailable, useServiceInfo } from "./ServiceStatus";
 import { scopeSummary } from "./summary";
 import { applyVerb, verbChoices } from "./verbs";
+import { StatusText } from "../../common/StatusText";
 
 const INVALID_FIELD = 'input[aria-invalid="true"]:not([disabled]), textarea[aria-invalid="true"]';
 const rowStyle = { display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" } as const;
@@ -70,7 +70,7 @@ function GrantEditor(props: {
         <ul style={{ margin: 0, paddingLeft: 0, listStyle: "none" }}>
           {shown.map((i, n) => (
             <li key={n}>
-              <StatusIndicator type={i.severity}>{i.message}</StatusIndicator>
+              <StatusText type={i.severity}>{i.message}</StatusText>
             </li>
           ))}
         </ul>

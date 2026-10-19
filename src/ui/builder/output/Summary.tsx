@@ -1,8 +1,8 @@
 import Box from "@cloudscape-design/components/box";
 import SpaceBetween from "@cloudscape-design/components/space-between";
-import StatusIndicator from "@cloudscape-design/components/status-indicator";
 import type { JSX } from "react";
 import type { ExportInput } from "../../../core/export/types";
+import { StatusText } from "../../common/StatusText";
 
 const listStyle = { margin: 0, paddingLeft: 0, listStyle: "none" } as const;
 
@@ -20,7 +20,7 @@ export function Summary(props: { summary: ExportInput["summary"] }): JSX.Element
           <ul style={listStyle}>
             {can.map((c) => (
               <li key={c.grantId + c.text}>
-                <StatusIndicator type="success">{c.text}</StatusIndicator>
+                <StatusText type="success">{c.text}</StatusText>
               </li>
             ))}
           </ul>
@@ -32,7 +32,7 @@ export function Summary(props: { summary: ExportInput["summary"] }): JSX.Element
           <ul style={listStyle}>
             {cannot.map((c) => (
               <li key={c}>
-                <StatusIndicator type="stopped">{c}</StatusIndicator>
+                <StatusText type="stopped">{c}</StatusText>
               </li>
             ))}
           </ul>

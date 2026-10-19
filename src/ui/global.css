@@ -166,3 +166,7 @@ a { color: var(--rc-link); }
 /* first-run tour: the cut-out and the card glide between steps */
 .rc-tour-anim { transition: left 0.2s ease, top 0.2s ease, width 0.2s ease, height 0.2s ease; }
 @media (prefers-reduced-motion: reduce) { .rc-tour-anim { transition: none; } }
+
+/* Cloudscape's StatusIndicator sets word-break: break-all on its inner span (with a :not(#\9) selector, hence
+   !important), which splits ordinary words mid-word. Words wrap normally; only an unbreakable ARN breaks anywhere. */
+.rc-status-text [class*="awsui_display-inline-block_"] { word-break: normal !important; overflow-wrap: anywhere !important; }

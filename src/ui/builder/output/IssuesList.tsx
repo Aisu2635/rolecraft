@@ -1,11 +1,11 @@
 import Box from "@cloudscape-design/components/box";
 import Button from "@cloudscape-design/components/button";
 import SpaceBetween from "@cloudscape-design/components/space-between";
-import StatusIndicator, { type StatusIndicatorProps } from "@cloudscape-design/components/status-indicator";
 import type { JSX } from "react";
 import type { Issue, Severity } from "../../../core/types";
 import { isRevealed, useBuilderStore } from "../../../state/builder";
 import { focusIdFor, splitPending, todoText } from "../issues";
+import { StatusText, type StatusType } from "../../common/StatusText";
 
 /**
  * Open the step that owns the issue, then focus its field. setStep clears the target, so it must go first.
@@ -32,7 +32,7 @@ export function usePendingSplit(issues: Issue[]): { pending: Issue[]; shown: Iss
 
 function Rows(props: {
   issues: Issue[];
-  type(i: Issue): StatusIndicatorProps.Type;
+  type(i: Issue): StatusType;
   text(i: Issue): string;
   onJump?: (() => void) | undefined;
 }): JSX.Element {
@@ -40,7 +40,7 @@ function Rows(props: {
     <ul style={{ margin: 0, paddingLeft: 0, listStyle: "none" }}>
       {props.issues.map((issue, n) => (
         <li key={n} style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap", padding: "2px 0" }}>
-          <StatusIndicator type={props.type(issue)}>{props.text(issue)}</StatusIndicator>
+          <StatusText type={props.type(issue)}>{props.text(issue)}</StatusText>
           {focusIdFor(issue) !== null && (
             <Button
               variant="inline-link"
