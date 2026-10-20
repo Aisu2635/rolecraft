@@ -226,7 +226,7 @@ for case_dir in "$exports"/*/; do
       for key in $keys; do ignore+=(--ignore "$key"); done
       if "$PYTHON" "$root/scripts/iam_state.py" diff "$work/dumps/$case_id.bash.json" "$dump" "${ignore[@]}"; then
         status="same as bash"
-        for key in $keys; do status+=", except $key"; done
+        for key in ${IGNORE["$case_id/$fmt"]:-}; do status+=", except $key"; done
       else
         echo "FAIL: $case_id/$fmt: IAM state differs from bash's (diff above)" >&2
         status="**FAIL (differs)**"
