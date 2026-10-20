@@ -22,8 +22,13 @@ describe("LandingPage", () => {
     vi.stubGlobal("fetch", f);
     renderLanding();
     expect(screen.getByRole("heading", { level: 1 }).textContent).toContain("Least-privilege AWS roles");
-    expect(screen.getByRole("link", { name: "Browse templates" })).toHaveAttribute("href", "/templates");
-    expect(screen.getByRole("link", { name: "Start from scratch" })).toHaveAttribute("href", "/builder");
+    expect(screen.queryByRole("link", { name: "Browse templates" })).toBeNull();
+    const start = screen.getByRole("link", { name: "Start from scratch" });
+    expect(start).toHaveAttribute("href", "/builder");
+    expect(start).toHaveClass("primary");
+    expect(document.querySelectorAll('a[href="/templates"]')).toHaveLength(0);
+    expect(document.body.textContent).not.toMatch(/template/i);
+    expect(screen.getByText("Share a role as a link")).toBeInTheDocument();
     expect(screen.getByText("Not affiliated with Amazon Web Services")).toBeInTheDocument();
     expect(screen.getByText("450+ services")).toBeInTheDocument();
     await waitFor(() => expect(f).toHaveBeenCalled());

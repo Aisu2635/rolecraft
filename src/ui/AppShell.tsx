@@ -33,7 +33,6 @@ export function AppShell() {
           }}
           utilities={[
             ...(tourOffered ? [{ type: "button" as const, text: "Take the tour", onClick: requestTour }] : []),
-            { type: "button", text: "Templates", href: "/templates", onFollow: go("/templates") },
             { type: "button", text: "Builder", href: "/builder", onFollow: go("/builder") },
             {
               type: "button",

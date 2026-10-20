@@ -1,6 +1,6 @@
 import {
   Key,
-  Layout,
+  LinkSimple,
   ListChecks,
   Monitor,
   ShieldCheck,
@@ -81,14 +81,14 @@ function DesktopNote() {
 
 const features = [
   {
-    icon: <Layout size={20} />,
-    title: "Start from a template",
-    body: "Common jobs — S3 folder access, GitHub deploys, EC2 operators — ready in a few clicks.",
-  },
-  {
     icon: <ListChecks size={20} />,
     title: "Choose access visually",
     body: "Write rules as sentences or tick boxes. Folders, tags and service quirks handled for you.",
+  },
+  {
+    icon: <LinkSimple size={20} />,
+    title: "Share a role as a link",
+    body: "Send the whole role as a URL for review. Nothing is uploaded.",
   },
   {
     icon: <Terminal size={20} />,
@@ -147,14 +147,10 @@ export function LandingPage() {
             <div className="lp-kick">IAM policy builder</div>
             <h1>Least-privilege AWS roles, without writing JSON.</h1>
             <p className="lp-sub">
-              Pick a template or describe access in plain sentences. Get the policy, the trust policy, and the AWS CLI or
-              Terraform to create it.
+              Describe the access you need in plain English, review it, and export a ready-to-run role.
             </p>
             <div className="lp-ctas">
-              <Link className="lp-btn primary" to="/templates">
-                Browse templates
-              </Link>
-              <Link className="lp-btn" to="/builder">
+              <Link className="lp-btn primary" to="/builder">
                 Start from scratch
               </Link>
             </div>

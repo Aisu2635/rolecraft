@@ -52,6 +52,23 @@ describe("App shell", () => {
     expect(screen.getByRole("dialog", { name: "Pick AWS services" })).toBeInTheDocument();
   });
 
+  it("hides the Templates nav item but keeps the /templates route for old links", () => {
+    const { unmount } = render(
+      <MemoryRouter initialEntries={["/"]}>
+        <AppRoutes />
+      </MemoryRouter>,
+    );
+    expect(screen.queryAllByRole("link", { name: "Templates", hidden: true })).toHaveLength(0);
+    expect(screen.queryAllByRole("button", { name: "Templates", hidden: true })).toHaveLength(0);
+    unmount();
+    render(
+      <MemoryRouter initialEntries={["/templates"]}>
+        <AppRoutes />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText(/Ready-made least-privilege roles/)).toBeInTheDocument();
+  });
+
   it("links GitHub to the RoleCraft repo", () => {
     expect(REPO_URL).toBe("https://github.com/Aisu2635/rolecraft");
     render(
