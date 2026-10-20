@@ -29,6 +29,8 @@ const MARGIN = 16;
 const PAD = 4;
 const INSET = 2;
 const CARD_WIDTH = 340;
+/** The card keeps this far below the bottom edge of the top nav. */
+const NAV_GAP = 8;
 /** An open dropdown, menu or modal (or the trigger of one): Esc there closes it, not the tour. */
 const OVERLAY = [
   '[aria-expanded="true"][aria-haspopup]',
@@ -57,16 +59,18 @@ const clamp = (v: number, min: number, max: number): number => Math.max(min, Mat
 /**
  * Where the card goes: beside the target (right, left, below, above, in that order), on the first side with room
  * for it, aligned with the target's start and kept inside the viewport. With no room anywhere it is centred.
+ * The card's top never goes above `minTop` (the top nav's bottom edge plus a gap), so the nav never covers it.
  */
-export function placeCard(target: Rect | null, card: Size, vp: Size): { left: number; top: number } {
-  const centred = { left: (vp.width - card.width) / 2, top: (vp.height - card.height) / 2 };
+export function placeCard(target: Rect | null, card: Size, vp: Size, minTop = MARGIN): { left: number; top: number } {
+  const top0 = Math.max(MARGIN, minTop);
+  const centred = { left: (vp.width - card.width) / 2, top: Math.max(top0, (vp.height - card.height) / 2) };
   if (!target) return centred;
-  const alongY = clamp(target.top, MARGIN, vp.height - card.height - MARGIN);
+  const alongY = clamp(target.top, top0, vp.height - card.height - MARGIN);
   const alongX = clamp(target.left, MARGIN, vp.width - card.width - MARGIN);
   if (vp.width - target.right - GAP - MARGIN >= card.width) return { left: target.right + GAP, top: alongY };
   if (target.left - GAP - MARGIN >= card.width) return { left: target.left - GAP - card.width, top: alongY };
   if (vp.height - target.bottom - GAP - MARGIN >= card.height) return { left: alongX, top: target.bottom + GAP };
-  if (target.top - GAP - MARGIN >= card.height) return { left: alongX, top: target.top - GAP - card.height };
+  if (target.top - GAP - top0 >= card.height) return { left: alongX, top: target.top - GAP - card.height };
   return centred;
 }
 
@@ -150,8 +154,10 @@ export function Tour(): JSX.Element | null {
     const el = document.querySelector<HTMLElement>(`[data-tour="${step.target}"]`);
     const vp = { width: document.documentElement.clientWidth || window.innerWidth, height: window.innerHeight };
     const size = { width: card.current?.offsetWidth ?? CARD_WIDTH, height: card.current?.offsetHeight ?? 0 };
+    const nav = document.getElementById("top-nav");
+    const minTop = nav ? Math.max(0, nav.getBoundingClientRect().bottom) + NAV_GAP : MARGIN;
     if (!el) {
-      setLayout({ card: placeCard(null, size, vp), hole: null });
+      setLayout({ card: placeCard(null, size, vp, minTop), hole: null });
       return;
     }
     const r = el.getBoundingClientRect();
@@ -161,7 +167,7 @@ export function Tour(): JSX.Element | null {
     const bottom = Math.min(vp.height - INSET, r.bottom + PAD);
     const hole = { left, top, width: Math.max(0, right - left), height: Math.max(0, bottom - top) };
     const rect = { ...hole, right, bottom };
-    setLayout({ card: placeCard(rect, size, vp), hole });
+    setLayout({ card: placeCard(rect, size, vp, minTop), hole });
   }, [step.target]);
 
   useLayoutEffect(() => {

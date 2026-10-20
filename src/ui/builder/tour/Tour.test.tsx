@@ -174,6 +174,23 @@ describe("Tour", () => {
     expect(css).toContain(".rc-tour-card:focus-visible { outline: 2px solid var(--rc-focus); outline-offset: 2px; }");
   });
 
+  it("measures the top nav and keeps the card 8 px below it", () => {
+    const box = (top: number, height: number, left = 0, width = 240) =>
+      ({ top, bottom: top + height, left, right: left + width, width, height, x: left, y: top, toJSON: () => ({}) }) as DOMRect;
+    const nav = document.createElement("div");
+    nav.id = "top-nav";
+    nav.getBoundingClientRect = () => box(0, 57, 0, 1024);
+    document.body.prepend(nav);
+    const { container } = ui();
+    const sidebar = container.querySelector<HTMLElement>('[data-tour="sidebar"]')!;
+    sidebar.getBoundingClientRect = () => box(57, 700);
+    act(() => {
+      window.dispatchEvent(new Event("resize"));
+    });
+    expect(screen.getByRole("dialog").style.top).toBe("65px");
+    nav.remove();
+  });
+
   it("Skip tour closes and sets the flag", () => {
     ui();
     fireEvent.click(screen.getByRole("button", { name: "Skip tour" }));
@@ -244,6 +261,17 @@ describe("placeCard", () => {
   it("centres the card when nothing fits or there is no target", () => {
     expect(placeCard(rect(0, 0, 1440, 900), card, vp)).toEqual({ left: 550, top: 350 });
     expect(placeCard(null, card, vp)).toEqual({ left: 550, top: 350 });
+  });
+  it("keeps the card's top below the top nav (minTop), whichever side it goes on", () => {
+    // The step-1 cut-out starts 4 px above the services column, i.e. at y=53, under a 57 px nav.
+    expect(placeCard(rect(0, 53, 240, 843), card, vp, 65)).toEqual({ left: 256, top: 65 });
+    expect(placeCard(rect(1040, 53, 400, 843), card, vp, 65)).toEqual({ left: 684, top: 65 });
+    // Above the target only when there is room between the nav and the target.
+    expect(placeCard(rect(0, 700, 1440, 190), card, vp, 65)).toEqual({ left: 16, top: 484 });
+    expect(placeCard(rect(0, 250, 1440, 640), card, vp, 65)).toEqual({ left: 550, top: 350 });
+    expect(placeCard(rect(0, 250, 1440, 640), card, vp)).toEqual({ left: 16, top: 34 });
+    // A short viewport: the centred card still starts below the nav.
+    expect(placeCard(null, card, { width: 1440, height: 300 }, 65)).toEqual({ left: 550, top: 65 });
   });
 });
 
