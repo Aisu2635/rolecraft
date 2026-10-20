@@ -103,6 +103,12 @@ class Helpers(unittest.TestCase):
         self.assertEqual(s.document("%7B%22Version%22%3A%20%222012-10-17%22%7D"), {"Version": "2012-10-17"})
         self.assertEqual(s.document({"Version": "2012-10-17"}), {"Version": "2012-10-17"})
 
+    def test_document_parses_motos_python_repr(self) -> None:
+        doc = {"Version": "2012-10-17", "Statement": [{"Effect": "Allow", "Action": "s3:GetObject", "Resource": "*"}]}
+        self.assertEqual(s.document(repr(doc)), doc)
+        with self.assertRaises(ValueError):
+            s.document("['not', 'a', 'document']")
+
     def test_eks_entries_counts_calls(self) -> None:
         events = [
             {"op": "rejected", "region": "r", "cluster": "c", "principal": "arn:aws:iam::123456789012:role/x"},

@@ -53,6 +53,9 @@ declare -A IGNORE=(
   # formats apply it and are compared in full.
   ["github-deploy/terraform"]="oidc_providers"
   ["github-deploy/cloudformation"]="oidc_providers"
+  # moto gap: its CloudFormation has no AWS::IAM::OIDCProvider (the stack completes without it; no
+  # cloudformation_type for it in moto/iam/models.py). The run still checks the derived template deploys.
+  ["github-deploy/cloudformation-oidc"]="oidc_providers"
 )
 # moto gap: its AWS::IAM::Role ignores ManagedPolicyArns (moto/iam/models.py Role.create_from_cloudformation_json).
 CFN_MANAGED_POLICY_ARNS_GAP="roles[].attached_policies policies[].attachment_count"

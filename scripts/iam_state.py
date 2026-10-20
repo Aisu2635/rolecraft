@@ -17,6 +17,7 @@ or "list[].field" (that field in every item of the list).
 
 from __future__ import annotations
 
+import ast
 import difflib
 import json
 import os
@@ -34,10 +35,21 @@ def strip_account(arn: str) -> str:
 
 
 def document(doc: Any) -> Any:
-    """A policy document as a dict: boto3 decodes most of them, some come URL-encoded."""
-    if isinstance(doc, str):
-        return json.loads(unquote(doc))
-    return doc
+    """A policy document as a dict: boto3 decodes most of them, some come URL-encoded.
+
+    moto's CloudFormation stores an AWS::IAM::Role's inline Policies as a Python dict, so the API returns its
+    repr ("{'Version': ...}"); that is still the template's document, so it is parsed back (literals only).
+    """
+    if not isinstance(doc, str):
+        return doc
+    text = unquote(doc)
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        parsed = ast.literal_eval(text)
+        if not isinstance(parsed, dict):
+            raise
+        return parsed
 
 
 def tags(items: list[dict[str, str]] | None) -> dict[str, str]:
