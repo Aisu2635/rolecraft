@@ -20,7 +20,8 @@
 # error, so the scripts' retry path runs. Terraform's EKS resources are not applied (TF_SKIP_TYPES), and
 # moto's CloudFormation skips AWS::EKS::AccessEntry, so neither is compared on eks_access_entries.
 # moto's CloudFormation also ignores AWS::IAM::Role ManagedPolicyArns: for templates that use it, the
-# comparison ignores roles[].attached_policies and policies[].attachment_count, and nothing else.
+# comparison ignores roles[].attached_policies and policies[].attachment_count; it has no AWS::IAM::GroupPolicy,
+# UserPolicy or OIDCProvider either, so templates using them skip groups[]/users[].inline_policies / oidc_providers.
 #
 # Tool paths via env: PYTHON (default python3, needs boto3), PWSH, TERRAFORM. TF_PROVIDER_VERSION pins
 # hashicorp/aws for the applies.
@@ -222,6 +223,10 @@ ignores_for() {
     cloudformation*)
       paths+=" eks_access_entries"
       if grep -q '^      ManagedPolicyArns:$' "$dir/template.yaml"; then paths+=" $CFN_MANAGED_POLICY_ARNS_GAP"; fi
+      # moto gap: no AWS::IAM::GroupPolicy / AWS::IAM::UserPolicy in its CloudFormation (only AWS::IAM::Policy
+      # has a cloudformation_type in moto/iam/models.py); the stack completes without them.
+      if grep -q '^    Type: AWS::IAM::GroupPolicy$' "$dir/template.yaml"; then paths+=" groups[].inline_policies"; fi
+      if grep -q '^    Type: AWS::IAM::UserPolicy$' "$dir/template.yaml"; then paths+=" users[].inline_policies"; fi
       ;;
   esac
   echo "$paths"
