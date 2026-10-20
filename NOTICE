@@ -2,3 +2,5 @@ RoleCraft
 Copyright 2026 Om Hinge
 
 This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+AWS service and action data comes from the AWS Service Authorization Reference (servicereference.us-east-1.amazonaws.com); AWS and Amazon Web Services are trademarks of Amazon.com, Inc. or its affiliates, and RoleCraft isn't affiliated with or endorsed by Amazon Web Services.
