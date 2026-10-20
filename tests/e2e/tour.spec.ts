@@ -69,3 +69,15 @@ test("a shared link opens without the tour", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Trusted entity" })).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(0);
 });
+
+test("every tour card sits below the top nav", async ({ page }) => {
+  await page.goto("/builder");
+  await expect(page.getByRole("dialog")).toBeVisible();
+  const navBottom = (await page.locator("#top-nav").boundingBox())!;
+  for (let step = 1; step <= 5; step++) {
+    const card = page.getByRole("dialog");
+    await expect(card).toContainText(`${step} of 5`);
+    await expect.poll(async () => (await card.boundingBox())!.y).toBeGreaterThanOrEqual(navBottom.y + navBottom.height + 8);
+    if (step < 5) await card.getByRole("button", { name: "Next tour stop" }).click();
+  }
+});
