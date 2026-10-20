@@ -1,13 +1,13 @@
 import { EKS_COMMENTS, EKS_GROUP_COMMENT, EKS_PROPAGATION_ERROR, EKS_RETRY, EKS_RETRY_FAILED, EKS_RETRY_MESSAGE, EKS_VIEW_POLICY, NO_REGION_MESSAGE, eksClusters } from "./eks";
 import { stringifyPolicy, type ExportFile } from "./json";
-import { accountMismatch, githubAccount, shQuote, type ExportInput } from "./types";
+import { accountMismatch, githubAccount, shQuote, TAG, type ExportInput } from "./types";
 
 // Every flag whose value comes from a name is written --flag=value: IAM names may start with "-", which the
 // AWS CLI's argument parser would read as an option if the value were a separate word.
 
 /** Same description as Terraform's and CloudFormation's managed policy (scripts/apply-exports.sh compares them). */
 const CREATE_POLICY =
-  "POLICY_ARN=$(aws iam create-policy --policy-name=\"${ROLE_NAME}-policy\" --policy-document file://policy.json --description 'Created with RoleCraft' --query Policy.Arn --output text)";
+  `POLICY_ARN=$(aws iam create-policy --policy-name="\${ROLE_NAME}-policy" --policy-document file://policy.json --description ${shQuote(TAG)} --query Policy.Arn --output text)`;
 
 const EOF_MARK = "ROLECRAFT_EOF";
 const GITHUB_OIDC_CHECK = [
@@ -144,7 +144,7 @@ export function exportCliBash(input: ExportInput): ExportFile {
     add("# GitHub Actions needs an OIDC identity provider in this account (created once).", ...GITHUB_OIDC_CHECK, "");
   }
   add(
-    "aws iam create-role --role-name=\"$ROLE_NAME\" --assume-role-policy-document file://trust.json --description 'Created with RoleCraft' >/dev/null",
+    `aws iam create-role --role-name="$ROLE_NAME" --assume-role-policy-document file://trust.json --description ${shQuote(TAG)} >/dev/null`,
   );
   if (result.policy) {
     if (inline) {

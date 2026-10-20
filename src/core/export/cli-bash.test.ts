@@ -3,7 +3,7 @@ import { REFERENCE_CASES } from "./__fixtures__/cases";
 import { exportCliBash } from "./cli-bash";
 import { EKS_PROPAGATION_ERROR, EKS_RETRY_FAILED, EKS_RETRY_MESSAGE } from "./eks";
 import { stringifyPolicy } from "./json";
-import type { ExportInput } from "./types";
+import { TAG, type ExportInput } from "./types";
 
 const names = Object.keys(REFERENCE_CASES);
 const make = (n: string): ExportInput => (REFERENCE_CASES[n] as () => ExportInput)();
@@ -62,7 +62,7 @@ describe("exportCliBash", () => {
         .content.split("\n")
         .filter((l) => l.includes("aws iam create-policy "));
       expect(lines).toHaveLength(1);
-      expect(lines[0]).toContain(" --description 'Created with RoleCraft' ");
+      expect(lines[0]).toContain(` --description '${TAG}' `);
     }
   });
   it("managed ARNs are attached; inline mode uses put-role-policy", () => {
