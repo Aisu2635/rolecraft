@@ -119,3 +119,12 @@ const DROPPED_INPUT = new Set(["I_ACTION_NOT_SCOPED"]);
 export function shownOnRow(issue: Issue): boolean {
   return issue.severity !== "info" || DROPPED_INPUT.has(issue.id);
 }
+
+/** Shown instead of core's "No permissions yet…" when grants exist but every action still waits on a to-do. */
+export const FINISH_TODOS = "Finish the to-do items to generate a policy.";
+
+/** What a shown issue says. Core's I_NO_PERMISSIONS asks for a service; with grants present it asks for the to-dos. */
+export function issueText(issue: Issue, model: RoleModel): string {
+  if (issue.id === "I_NO_PERMISSIONS" && model.grants.length > 0) return FINISH_TODOS;
+  return issue.message;
+}

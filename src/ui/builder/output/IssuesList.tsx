@@ -4,7 +4,7 @@ import SpaceBetween from "@cloudscape-design/components/space-between";
 import type { JSX } from "react";
 import type { Issue, Severity } from "../../../core/types";
 import { isRevealed, useBuilderStore } from "../../../state/builder";
-import { focusIdFor, splitPending, todoText } from "../issues";
+import { focusIdFor, issueText, splitPending, todoText } from "../issues";
 import { StatusText, type StatusType } from "../../common/StatusText";
 
 /**
@@ -84,7 +84,7 @@ export function IssuesList(props: {
           <Rows issues={pending} type={() => "pending"} text={(i) => todoText(i, model)} onJump={props.onJump} />
         </div>
       )}
-      {shown.length > 0 && <Rows issues={shown} type={(i) => i.severity} text={(i) => i.message} onJump={props.onJump} />}
+      {shown.length > 0 && <Rows issues={shown} type={(i) => i.severity} text={(i) => issueText(i, model)} onJump={props.onJump} />}
     </SpaceBetween>
   );
 }

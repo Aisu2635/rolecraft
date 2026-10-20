@@ -13,6 +13,7 @@ import { CatalogContext } from "../../../state/catalog";
 import { useDerivedOutput } from "../../../state/derive";
 import { useCopy } from "../../common/clipboard";
 import { CodeView } from "./CodeView";
+import { FINISH_TODOS } from "../issues";
 import { IssuesList, usePendingSplit } from "./IssuesList";
 import { SizeMeter } from "./SizeMeter";
 import { StatusLine } from "./StatusLine";
@@ -81,7 +82,9 @@ export function OutputPanel(props: OutputPanelProps = {}): JSX.Element {
       content: result.policy ? (
         <CodeView text={policyText} language="json" label="Policy JSON" />
       ) : (
-        <Box color="text-body-secondary">No permissions yet. Add a service to generate a policy.</Box>
+        <Box color="text-body-secondary">
+          {model.grants.length > 0 ? FINISH_TODOS : "No permissions yet. Add a service to generate a policy."}
+        </Box>
       ),
     },
     {

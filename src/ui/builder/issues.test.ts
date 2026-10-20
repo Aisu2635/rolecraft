@@ -1,7 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { createEmptyModel, type RoleModel } from "../../core/model/model";
 import type { Issue } from "../../core/types";
-import { errorTextAt, focusIdFor, grantIssues, issuesAt, splitPending, todoText } from "./issues";
+import {
+  errorTextAt,
+  FINISH_TODOS,
+  focusIdFor,
+  grantIssues,
+  issuesAt,
+  issueText,
+  splitPending,
+  todoText,
+} from "./issues";
 
 const i = (p: Partial<Issue> & { id: string }): Issue => ({ severity: "error", message: p.id, ...p });
 
@@ -165,5 +174,21 @@ describe("todoText: S3 folders", () => {
     expect(todoText(i({ id: "E_S3_PREFIX_EMPTY", grantId: "g", path: "data.prefixes[1]" }), m)).toBe(
       "Enter the folder name, or remove the row",
     );
+  });
+});
+
+describe("issueText", () => {
+  const none = i({ id: "I_NO_PERMISSIONS", severity: "info", message: "No permissions yet. Add a service to generate a policy." });
+  it("keeps the core message while there are no grants", () => {
+    expect(issueText(none, createEmptyModel())).toBe("No permissions yet. Add a service to generate a policy.");
+  });
+  it("asks for the to-dos when grants exist but none produced a statement", () => {
+    const model = { ...createEmptyModel(), grants: [{ id: "g1" }] } as unknown as RoleModel;
+    expect(issueText(none, model)).toBe(FINISH_TODOS);
+    expect(FINISH_TODOS).toBe("Finish the to-do items to generate a policy.");
+  });
+  it("leaves every other issue's message alone", () => {
+    const model = { ...createEmptyModel(), grants: [{ id: "g1" }] } as unknown as RoleModel;
+    expect(issueText(i({ id: "W_X", message: "hello" }), model)).toBe("hello");
   });
 });

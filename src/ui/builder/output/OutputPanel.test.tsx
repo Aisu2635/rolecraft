@@ -60,6 +60,16 @@ describe("OutputPanel", () => {
     expect(within(panel).getByText("No permissions yet. Add a service to generate a policy.")).toBeInTheDocument();
   });
 
+  it("asks for the to-dos, not a service, when a grant exists but its bucket is still empty", async () => {
+    const cat = await s3GroupModel({ bucket: "" });
+    render(withCatalog(cat, <OutputPanel />));
+    expect(ready(cat).issues.some((x) => x.id === "I_NO_PERMISSIONS")).toBe(true);
+    expect(screen.queryByText(/No permissions yet/)).toBeNull();
+    const panel = screen.getByRole("tabpanel", { name: "Policy" });
+    expect(within(panel).getByText("Finish the to-do items to generate a policy.")).toBeInTheDocument();
+    expect(screen.getAllByText("Finish the to-do items to generate a policy.").length).toBe(2);
+  });
+
   it("copies the active tab's text", async () => {
     const cat = await s3GroupModel();
     render(withCatalog(cat, <OutputPanel />));
