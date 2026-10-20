@@ -1,10 +1,11 @@
 import { mkdir, readdir, rename as fsRename, rm, unlink, writeFile as fsWriteFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { CURATED } from "../src/core/catalog/curated.ts";
 import {
   assertSanity,
   buildIndex,
-  toSlimService,
+  transformService,
 } from "../src/core/catalog/transform.ts";
 import type { SlimService } from "../src/core/types.ts";
 
@@ -19,6 +20,8 @@ const REQUEST_TIMEOUT_MS = 30_000;
 // Windows refuses a rename while another process (an editor, the dev server, antivirus) briefly holds the file.
 const LOCKED = new Set(["EPERM", "EACCES", "EBUSY"]);
 const MOVE_RETRIES = 5;
+/** Actions with missing access-level flags are dropped; more than this share of all actions fails the sync. */
+const MAX_DROPPED_SHARE = 0.01;
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const dataDir = path.join(root, "public", "data");
@@ -31,10 +34,13 @@ export interface SyncOptions {
   outDir: string;
   /** Where files are written first; must be on the same volume as outDir. Default: a sibling of outDir. */
   tmpDir?: string;
+  /** Left behind by older versions of this script (which swapped directories); removed at the start. */
+  oldDir?: string;
   sleep?: (ms: number) => Promise<void>;
   /** The index's generatedAt (YYYY-MM-DD). Default: today in UTC. */
   today?: string;
   log?: (msg: string) => void;
+  warn?: (msg: string) => void;
   writeFile?: (file: string, data: string) => Promise<void>;
   rename?: (from: string, to: string) => Promise<void>;
 }
@@ -130,17 +136,21 @@ export async function syncAwsData(opts: SyncOptions): Promise<number> {
     fetch: fetchFn,
     outDir,
     tmpDir = path.join(path.dirname(outDir), `.${path.basename(outDir)}-new`),
+    oldDir = path.join(path.dirname(outDir), `.${path.basename(outDir)}-old`),
     sleep = defaultSleep,
     today = new Date().toISOString().slice(0, 10),
     log = console.log,
+    warn = console.warn,
     writeFile = (file, data) => fsWriteFile(file, data),
     rename = fsRename,
   } = opts;
 
+  await rm(oldDir, { recursive: true, force: true });
   const list = validateList(await fetchJson(LIST_URL, fetchFn, sleep));
   log(`Fetching ${list.length} services...`);
 
   const results: SlimService[] = new Array<SlimService>(list.length);
+  const droppedBy: string[][] = new Array<string[]>(list.length);
   const errors: string[] = [];
   let next = 0;
   const worker = async () => {
@@ -149,10 +159,11 @@ export async function syncAwsData(opts: SyncOptions): Promise<number> {
       const entry = list[i];
       if (!entry) continue;
       try {
-        const slim = toSlimService(await fetchJson(entry.url, fetchFn, sleep));
+        const { service: slim, dropped } = transformService(await fetchJson(entry.url, fetchFn, sleep));
         if (slim.key !== entry.service)
           throw new Error(`key mismatch: ${slim.key} vs ${entry.service}`);
         results[i] = slim;
+        droppedBy[i] = dropped;
       } catch (e) {
         errors.push(
           `${entry.service}: ${e instanceof Error ? e.message : String(e)}`,
@@ -163,6 +174,28 @@ export async function syncAwsData(opts: SyncOptions): Promise<number> {
   await Promise.all(Array.from({ length: CONCURRENCY }, worker));
   if (errors.length > 0) {
     throw new Error(`${errors.length} service(s) failed:\n${errors.join("\n")}`);
+  }
+
+  // Fail closed on unknown access levels: transformService drops such actions so they can never be granted.
+  // A few upstream gaps are tolerated with a warning; a curated service losing actions, or many losses, is not.
+  const lost = list
+    .map((e, i) => ({ key: e.service, names: droppedBy[i] ?? [] }))
+    .filter((d) => d.names.length > 0);
+  for (const d of lost) {
+    warn(`${d.key}: dropped ${d.names.length} action(s) with missing access-level flags: ${d.names.join(", ")}`);
+  }
+  const describe = (ds: typeof lost) => ds.map((d) => `${d.key}: ${d.names.join(", ")}`).join("\n");
+  const curatedLost = lost.filter((d) => Object.hasOwn(CURATED, d.key));
+  if (curatedLost.length > 0) {
+    throw new Error(`Curated services have actions with missing access-level flags: ${describe(curatedLost)}`);
+  }
+  const droppedCount = lost.reduce((n, d) => n + d.names.length, 0);
+  const total = droppedCount + results.reduce((n, s) => n + s.actions.length, 0);
+  if (droppedCount > total * MAX_DROPPED_SHARE) {
+    const pct = ((droppedCount / total) * 100).toFixed(2);
+    throw new Error(
+      `${droppedCount} of ${total} actions (${pct}%) have missing access-level flags, more than 1%:\n${describe(lost)}`,
+    );
   }
 
   const index = buildIndex(results, today);

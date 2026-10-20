@@ -10,7 +10,21 @@ const H = "https://servicereference.us-east-1.amazonaws.com";
 const svcUrl = (k: string) => `${H}/v1/${k}/${k}.json`;
 // assertSanity wants >= 400 services including s3, ec2 and iam.
 const KEYS = ["s3", "ec2", "iam", ...Array.from({ length: 397 }, (_, i) => `svc-${i}`)];
-const svcJson = (k: string) => ({ Name: k, Actions: [{ Name: "GetThing" }] });
+const FLAGS = { IsList: false, IsWrite: false, IsPermissionManagement: false, IsTaggingOnly: false };
+const svcJson = (k: string, extra: unknown[] = []) => ({
+  Name: k,
+  Actions: [{ Name: "GetThing", Annotations: { Properties: FLAGS } }, ...extra],
+});
+/** An action whose Properties lacks IsWrite: its access level is unknown, so it must be dropped. */
+const noWrite = (name: string) => ({
+  Name: name,
+  Annotations: { Properties: { IsList: false, IsPermissionManagement: false, IsTaggingOnly: false } },
+});
+/** Serves each of these services with one extra action that lacks IsWrite. */
+const withNoWrite = (keys: string[]) => (url: string) => {
+  const k = keys.find((x) => svcUrl(x) === url);
+  return k ? json(svcJson(k, [noWrite(`Put${k}`)])) : undefined;
+};
 
 type Reply = (url: string, attempt: number) => Response | Promise<Response> | undefined;
 const json = (body: unknown, status = 200) =>
@@ -51,6 +65,7 @@ const opts = (fetch: typeof globalThis.fetch, extra: Partial<SyncOptions> = {}):
   sleep: async () => undefined,
   today: "2026-10-19",
   log: () => undefined,
+  warn: () => undefined,
   ...extra,
 });
 
@@ -163,6 +178,48 @@ describe("syncAwsData", () => {
     expect(siblings()).toEqual(["data"]);
   });
 
+  it("removes a leftover .data-old from an older sync at the start", async () => {
+    mkdirSync(path.join(root, ".data-old", "svc"), { recursive: true });
+    writeFileSync(path.join(root, ".data-old", "svc", "x.json"), "{}");
+    const { fn } = fakeFetch();
+    await syncAwsData(opts(fn));
+    expect(siblings()).toEqual(["data"]);
+  });
+
+  it("drops an action missing IsWrite, warns once for its service with the action names, and still syncs", async () => {
+    const warnings: string[] = [];
+    const { fn } = fakeFetch(withNoWrite(["svc-1"]));
+    await expect(syncAwsData(opts(fn, { warn: (m) => void warnings.push(m) }))).resolves.toBe(400);
+    expect(warnings).toEqual(['svc-1: dropped 1 action(s) with missing access-level flags: Putsvc-1']);
+    const svc1 = JSON.parse(read("svc", "svc-1.json"));
+    expect(svc1.actions.map((a: { name: string }) => a.name)).toEqual(["GetThing"]);
+  });
+
+  it("accepts dropping up to 1% of all actions (4 of 404)", async () => {
+    const warnings: string[] = [];
+    const { fn } = fakeFetch(withNoWrite(["svc-1", "svc-2", "svc-3", "svc-4"]));
+    await syncAwsData(opts(fn, { warn: (m) => void warnings.push(m) }));
+    expect(warnings).toHaveLength(4);
+  });
+
+  it("fails when more than 1% of all actions would be dropped (5 of 405), naming them, and writes nothing", async () => {
+    seedOld();
+    const { fn } = fakeFetch(withNoWrite(["svc-1", "svc-2", "svc-3", "svc-4", "svc-5"]));
+    const run = syncAwsData(opts(fn));
+    await expect(run).rejects.toThrow(/5 of 405 actions \(1\.23%\) .*more than 1%/);
+    await expect(run).rejects.toThrow(/svc-1: Putsvc-1.*svc-5: Putsvc-5/s);
+    expect(read("index.json")).toBe('"old index"');
+  });
+
+  it("fails when any action of a curated service would be dropped, naming it", async () => {
+    seedOld();
+    const { fn } = fakeFetch(withNoWrite(["s3"]));
+    await expect(syncAwsData(opts(fn))).rejects.toThrow(
+      "Curated services have actions with missing access-level flags: s3: Puts3",
+    );
+    expect(read("index.json")).toBe('"old index"');
+  });
+
   it("removes stale files only after every file is moved in, and moves the index last", async () => {
     seedOld();
     const { fn } = fakeFetch();
@@ -175,6 +232,9 @@ describe("syncAwsData", () => {
     await expect(syncAwsData(opts(fn, { rename: failing }))).rejects.toThrow("locked");
     expect(moved).toHaveLength(401);
     expect(moved.at(-1)).toBe("index.json");
+    // Expected, index-consistent outcome of a mid-move failure: the new svc files are in, the old index still
+    // lists only services whose files exist (each file valid on its own), nothing stale is deleted, and the next
+    // sync repairs it. There is no rollback (see the swap ruling in scripts/sync-aws-data.ts).
     expect(existsSync(path.join(outDir, "svc", "gone.json"))).toBe(true);
     expect(read("index.json")).toBe('"old index"');
     expect(siblings()).toEqual(["data"]);
