@@ -16,12 +16,14 @@ interface IndexInfo {
   services?: unknown[];
 }
 
-const DATA_DATE = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+// A fixed table, not Intl: en-GB's short month for September is "Sept".
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-/** "2026-10-19" -> "19 Oct 2026". generatedAt is a UTC calendar date, so it is formatted in UTC (no day shift). */
+/** "2026-10-19" -> "19 Oct 2026". generatedAt is a UTC calendar date, so it is read in UTC (no day shift). */
 export function formatDataDate(generatedAt: string): string {
   const d = /^\d{4}-\d{2}-\d{2}$/.test(generatedAt) ? new Date(`${generatedAt}T00:00:00Z`) : null;
-  return d && !Number.isNaN(d.getTime()) ? DATA_DATE.format(d) : generatedAt;
+  if (!d || Number.isNaN(d.getTime())) return generatedAt;
+  return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
 }
 
 function useIndexInfo(): IndexInfo | null {

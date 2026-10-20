@@ -1,7 +1,7 @@
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { LandingPage } from "./LandingPage";
+import { formatDataDate, LandingPage } from "./LandingPage";
 
 function renderLanding() {
   return render(
@@ -40,6 +40,17 @@ describe("LandingPage", () => {
     renderLanding();
     expect(await screen.findByText("3 services")).toBeInTheDocument();
     expect(screen.getByText("AWS data updated 19 Oct 2026")).toBeInTheDocument();
+  });
+
+  it("formats the data date in UTC with three-letter months (Sep, not en-GB's Sept)", () => {
+    expect(formatDataDate("2026-09-19")).toBe("19 Sep 2026");
+    expect(formatDataDate("2026-10-19")).toBe("19 Oct 2026");
+    const months = Array.from({ length: 12 }, (_, i) => formatDataDate(`2026-${String(i + 1).padStart(2, "0")}-01`));
+    expect(months.map((m) => m.split(" ")[1])).toEqual(
+      ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
+    );
+    expect(formatDataDate("2026-01-01")).toBe("1 Jan 2026");
+    expect(formatDataDate("2026-13-01")).toBe("2026-13-01");
   });
 
   it("shows a generatedAt that is not a YYYY-MM-DD date as it is", async () => {
