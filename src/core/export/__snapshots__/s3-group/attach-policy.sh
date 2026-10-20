@@ -40,7 +40,7 @@ cat > policy.json <<'ROLECRAFT_EOF'
 }
 ROLECRAFT_EOF
 
-POLICY_ARN=$(aws iam create-policy --policy-name="${ROLE_NAME}-policy" --policy-document file://policy.json --query Policy.Arn --output text)
+POLICY_ARN=$(aws iam create-policy --policy-name="${ROLE_NAME}-policy" --policy-document file://policy.json --description 'Created with RoleCraft' --query Policy.Arn --output text)
 aws iam attach-group-policy --group-name="$PRINCIPAL_NAME" --policy-arn="$POLICY_ARN"
 
 echo "Attached the policy to group $PRINCIPAL_NAME."

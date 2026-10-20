@@ -18,6 +18,10 @@ function asciiJson(s: string): string {
   return s.replace(/[\u007f-\uffff]/g, (c) => "\\u" + c.charCodeAt(0).toString(16).padStart(4, "0"));
 }
 
+/** Same description as Terraform's and CloudFormation's managed policy (scripts/apply-exports.sh compares them). */
+const CREATE_POLICY =
+  "$PolicyArn = aws iam create-policy \"--policy-name=${RoleName}-policy\" --policy-document file://policy.json --description 'Created with RoleCraft' --query Policy.Arn --output text";
+
 const GITHUB_OIDC_CHECK = [
   `$existing = aws iam list-open-id-connect-providers --query "OpenIDConnectProviderList[?ends_with(Arn, '/token.actions.githubusercontent.com')].Arn" --output text --no-cli-pager`,
   check("list-open-id-connect-providers"),
@@ -122,10 +126,7 @@ export function exportCliPowerShell(input: ExportInput): ExportFile {
         );
       } else {
         add(
-          ...aws(
-            "create-policy",
-            '$PolicyArn = aws iam create-policy "--policy-name=${RoleName}-policy" --policy-document file://policy.json --query Policy.Arn --output text',
-          ),
+          ...aws("create-policy", CREATE_POLICY),
           ...aws(
             `attach-${kind}-policy`,
             `aws iam attach-${kind}-policy "--${kind}-name=$PrincipalName" "--policy-arn=$PolicyArn"`,
@@ -194,10 +195,7 @@ export function exportCliPowerShell(input: ExportInput): ExportFile {
       );
     } else {
       add(
-        ...aws(
-          "create-policy",
-          '$PolicyArn = aws iam create-policy "--policy-name=${RoleName}-policy" --policy-document file://policy.json --query Policy.Arn --output text',
-        ),
+        ...aws("create-policy", CREATE_POLICY),
         ...aws("attach-role-policy", 'aws iam attach-role-policy "--role-name=$RoleName" "--policy-arn=$PolicyArn"'),
       );
     }

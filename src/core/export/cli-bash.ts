@@ -5,6 +5,10 @@ import { accountMismatch, githubAccount, shQuote, type ExportInput } from "./typ
 // Every flag whose value comes from a name is written --flag=value: IAM names may start with "-", which the
 // AWS CLI's argument parser would read as an option if the value were a separate word.
 
+/** Same description as Terraform's and CloudFormation's managed policy (scripts/apply-exports.sh compares them). */
+const CREATE_POLICY =
+  "POLICY_ARN=$(aws iam create-policy --policy-name=\"${ROLE_NAME}-policy\" --policy-document file://policy.json --description 'Created with RoleCraft' --query Policy.Arn --output text)";
+
 const EOF_MARK = "ROLECRAFT_EOF";
 const GITHUB_OIDC_CHECK = [
   'existing=$(aws iam list-open-id-connect-providers --query "OpenIDConnectProviderList[?ends_with(Arn, \'/token.actions.githubusercontent.com\')].Arn" --output text)',
@@ -95,7 +99,7 @@ export function exportCliBash(input: ExportInput): ExportFile {
         add(`aws iam put-${kind}-policy ${who} --policy-name="\${ROLE_NAME}-inline" --policy-document file://policy.json`);
       } else {
         add(
-          'POLICY_ARN=$(aws iam create-policy --policy-name="${ROLE_NAME}-policy" --policy-document file://policy.json --query Policy.Arn --output text)',
+          CREATE_POLICY,
           `aws iam attach-${kind}-policy ${who} --policy-arn="$POLICY_ARN"`,
         );
       }
@@ -149,7 +153,7 @@ export function exportCliBash(input: ExportInput): ExportFile {
       );
     } else {
       add(
-        'POLICY_ARN=$(aws iam create-policy --policy-name="${ROLE_NAME}-policy" --policy-document file://policy.json --query Policy.Arn --output text)',
+        CREATE_POLICY,
         'aws iam attach-role-policy --role-name="$ROLE_NAME" --policy-arn="$POLICY_ARN"',
       );
     }

@@ -29,7 +29,7 @@ cat > policy.json <<'ROLECRAFT_EOF'
 }
 ROLECRAFT_EOF
 
-POLICY_ARN=$(aws iam create-policy --policy-name="${ROLE_NAME}-policy" --policy-document file://policy.json --query Policy.Arn --output text)
+POLICY_ARN=$(aws iam create-policy --policy-name="${ROLE_NAME}-policy" --policy-document file://policy.json --description 'Created with RoleCraft' --query Policy.Arn --output text)
 aws iam attach-user-policy --user-name="$PRINCIPAL_NAME" --policy-arn="$POLICY_ARN"
 
 # Give kubectl access to your EKS cluster(s) through EKS access entries.

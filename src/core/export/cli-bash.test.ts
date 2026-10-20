@@ -55,6 +55,16 @@ describe("exportCliBash", () => {
     expect(c).toContain("attach-group-policy");
     expect(c).not.toContain("create-role");
   });
+  // Terraform and CloudFormation give the managed policy this description; the scripts must match (apply-exports CI).
+  it("create-policy carries the same description as Terraform and CloudFormation", () => {
+    for (const n of ["ec2-ssm", "s3-group"]) {
+      const lines = exportCliBash(make(n))
+        .content.split("\n")
+        .filter((l) => l.includes("aws iam create-policy "));
+      expect(lines).toHaveLength(1);
+      expect(lines[0]).toContain(" --description 'Created with RoleCraft' ");
+    }
+  });
   it("managed ARNs are attached; inline mode uses put-role-policy", () => {
     expect(exportCliBash(make("ec2-ssm")).content).toContain(
       "--policy-arn 'arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore'",

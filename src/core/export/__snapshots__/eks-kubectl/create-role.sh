@@ -51,7 +51,7 @@ cat > policy.json <<'ROLECRAFT_EOF'
 ROLECRAFT_EOF
 
 aws iam create-role --role-name="$ROLE_NAME" --assume-role-policy-document file://trust.json --description 'Created with RoleCraft' >/dev/null
-POLICY_ARN=$(aws iam create-policy --policy-name="${ROLE_NAME}-policy" --policy-document file://policy.json --query Policy.Arn --output text)
+POLICY_ARN=$(aws iam create-policy --policy-name="${ROLE_NAME}-policy" --policy-document file://policy.json --description 'Created with RoleCraft' --query Policy.Arn --output text)
 aws iam attach-role-policy --role-name="$ROLE_NAME" --policy-arn="$POLICY_ARN"
 
 # EC2 instances use roles through an instance profile.
