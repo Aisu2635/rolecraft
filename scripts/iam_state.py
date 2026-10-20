@@ -3,7 +3,7 @@
 
 Usage:
   iam_state.py dump [--eks-log <file>]          normalised JSON on stdout
-  iam_state.py diff <base.json> <other.json> [--ignore <key>]...
+  iam_state.py diff <base.json> <other.json> [--ignore <path>]...
 
 dump reads every role, user, group, customer managed policy, instance profile and OIDC provider through
 boto3 (AWS_ENDPOINT_URL points it at the emulator), with their trust policies, inline policies, attached
@@ -11,7 +11,8 @@ policies, group memberships and tags. ARNs lose their account id, and ids and da
 applies of the same case compare equal. --eks-log adds the access entries the aws stub recorded
 (scripts/aws_stub.py). Lists are sorted and keys are sorted, so the output is stable.
 
-diff exits 1, printing a unified diff, if the two dumps differ outside the ignored top-level keys.
+diff exits 1, printing a unified diff, if the two dumps differ outside the ignored paths: "key", "key.sub",
+or "list[].field" (that field in every item of the list).
 """
 
 from __future__ import annotations
@@ -186,19 +187,47 @@ def render(state: dict[str, Any]) -> str:
     return json.dumps(state, indent=2, sort_keys=True) + "\n"
 
 
+def drop_path(state: Any, path: str) -> None:
+    """Removes the field at `path` in place: "key", "key.sub", or "list[].field" (that field of every item)."""
+    parts = path.split(".")
+    if not all(parts) or parts[-1].endswith("[]"):
+        raise ValueError(f"bad ignore path {path!r}")
+    nodes = [state]
+    for part in parts[:-1]:
+        found: list[Any] = []
+        for node in nodes:
+            if not isinstance(node, dict):
+                continue
+            if part.endswith("[]"):
+                items = node.get(part[:-2])
+                found.extend(items if isinstance(items, list) else [])
+            elif part in node:
+                found.append(node[part])
+        nodes = found
+    for node in nodes:
+        if isinstance(node, dict):
+            node.pop(parts[-1], None)
+
+
+def compare(a: Any, b: Any, ignore: list[str], names: tuple[str, str] = ("base", "other")) -> list[str]:
+    """Unified diff lines of the two dumps after dropping the ignored paths (empty when they match)."""
+    a, b = json.loads(json.dumps(a)), json.loads(json.dumps(b))
+    for path in ignore:
+        drop_path(a, path)
+        drop_path(b, path)
+    if a == b:
+        return []
+    return list(difflib.unified_diff(render(a).splitlines(True), render(b).splitlines(True), *names))
+
+
 def diff(base: str, other: str, ignore: list[str]) -> int:
     with open(base, encoding="utf-8") as f:
         a = json.load(f)
     with open(other, encoding="utf-8") as f:
         b = json.load(f)
-    for key in ignore:
-        a.pop(key, None)
-        b.pop(key, None)
-    if a == b:
-        return 0
-    lines = difflib.unified_diff(render(a).splitlines(True), render(b).splitlines(True), base, other)
+    lines = compare(a, b, ignore, (base, other))
     sys.stdout.writelines(lines)
-    return 1
+    return 1 if lines else 0
 
 
 def main(argv: list[str]) -> int:

@@ -1,6 +1,6 @@
 name: Apply exports
 
-# Applies every export (bash, PowerShell, Terraform) for the reference and variant cases to moto, a local
+# Applies every export (bash, PowerShell, Terraform, CloudFormation) for the reference and variant cases to moto, a local
 # AWS emulator, and fails if an apply fails or a format leaves different IAM state than bash.
 # The logic lives in scripts/apply-exports.sh; see its header for what is applied, compared and skipped.
 on:
@@ -24,6 +24,11 @@ jobs:
     env:
       MOTO_VERSION: 5.2.4
       AWS_CLI_VERSION: 2.38.2
+      # sha256 of awscli-exe-linux-x86_64-2.38.2.zip; its .sig was verified once against the AWS CLI Team key
+      # (FB5D B77F D5C1 18B8 0511 ADA8 A631 0ACC 4672 475C) when the version was pinned.
+      AWS_CLI_SHA256: 16a4d39d60b631d884f1260fd7755b72daef15baf6cac21131c6c71676164b37
+      PWSH_VERSION: 7.6.7
+      PWSH_SHA256: 6896f9e3a6b0a354bf470835a96da76d2f801cd50dcf047ad7c4563bf93bf431
       TERRAFORM_VERSION: 1.9.8
       TF_PROVIDER_VERSION: 6.69.1
       MOTO_URL: http://127.0.0.1:5000
@@ -70,10 +75,21 @@ jobs:
             mkdir -p ~/awscli-zip
             curl -sSfL -o "$zip" "https://awscli.amazonaws.com/awscli-exe-linux-x86_64-${AWS_CLI_VERSION}.zip"
           fi
+          echo "${AWS_CLI_SHA256}  $zip" | sha256sum -c -
           unzip -q "$zip" -d "$RUNNER_TEMP/awscli"
           "$RUNNER_TEMP/awscli/aws/install" -i "$HOME/aws-cli" -b "$HOME/bin" --update
           echo "$HOME/bin" >> "$GITHUB_PATH"
           "$HOME/bin/aws" --version | grep -q "^aws-cli/${AWS_CLI_VERSION} " || { "$HOME/bin/aws" --version; exit 1; }
+      - name: Install PowerShell ${{ env.PWSH_VERSION }} (official release)
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/pwsh.tar.gz" \
+            "https://github.com/PowerShell/PowerShell/releases/download/v${PWSH_VERSION}/powershell-${PWSH_VERSION}-linux-x64.tar.gz"
+          echo "${PWSH_SHA256}  $RUNNER_TEMP/pwsh.tar.gz" | sha256sum -c -
+          mkdir -p "$HOME/pwsh"
+          tar -xzf "$RUNNER_TEMP/pwsh.tar.gz" -C "$HOME/pwsh"
+          chmod +x "$HOME/pwsh/pwsh"
+          echo "PWSH=$HOME/pwsh/pwsh" >> "$GITHUB_ENV"
+          test "$("$HOME/pwsh/pwsh" -NoProfile -Command '$PSVersionTable.PSVersion.ToString()')" = "$PWSH_VERSION"
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TERRAFORM_VERSION }}
@@ -84,6 +100,8 @@ jobs:
         with:
           path: ~/.terraform.d/plugin-cache
           key: tf-apply-plugins-${{ runner.os }}-${{ env.TERRAFORM_VERSION }}-aws-${{ env.TF_PROVIDER_VERSION }}
+      - name: Unit tests for the dump comparison
+        run: python -m unittest discover -s scripts -p test_iam_state.py -v
       - name: Apply every export to moto and compare the IAM state
         run: bash scripts/apply-exports.sh
         env:

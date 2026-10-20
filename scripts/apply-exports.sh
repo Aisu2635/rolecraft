@@ -9,12 +9,18 @@
 #   pwsh create-role.ps1 / attach-policy.ps1 -> dump, compared with bash's
 #   terraform init + apply of main.tf, with a generated override.tf pointing the AWS provider at the
 #   emulator (the export itself is never edited) -> dump, compared with bash's
-#   github-deploy only: the same for main.tf with its GitHub OIDC provider uncommented (derive_exports.py)
+#   cloudformation: the template's own "# Deploy:" command (aws cloudformation deploy), the stack must be
+#   CREATE_COMPLETE, then the "# aws iam ..." commands its header says to run -> dump, compared with bash's
+#   github-deploy only: terraform-oidc / cloudformation-oidc, the same with the GitHub OIDC provider
+#   uncommented (derive_exports.py)
 # scripts/iam_state.py dumps and compares. The run fails if an apply exits non-zero or a dump differs.
 #
 # moto has no EKS access entries, so `aws eks ...` goes to scripts/aws_stub.py (a shim named aws, first on
 # PATH, for bash and pwsh): its first create-access-entry per principal fails with EKS's propagation
-# error, so the scripts' retry path runs. Terraform's EKS resources are not applied (TF_SKIP_TYPES).
+# error, so the scripts' retry path runs. Terraform's EKS resources are not applied (TF_SKIP_TYPES), and
+# moto's CloudFormation skips AWS::EKS::AccessEntry, so neither is compared on eks_access_entries.
+# moto's CloudFormation also ignores AWS::IAM::Role ManagedPolicyArns: for templates that use it, the
+# comparison ignores roles[].attached_policies and policies[].attachment_count, and nothing else.
 #
 # Tool paths via env: PYTHON (default python3, needs boto3), PWSH, TERRAFORM. TF_PROVIDER_VERSION pins
 # hashicorp/aws for the applies.
@@ -39,15 +45,17 @@ export TF_VAR_region=${AWS_DEFAULT_REGION:?set AWS_DEFAULT_REGION}
 # Terraform resource types not applied: moto 5.2 has no EKS access entries. The CLI scripts' EKS steps run
 # against scripts/aws_stub.py instead; the stub tests the retry logic, not EKS.
 TF_SKIP_TYPES='^aws_eks_access_(entry|policy_association)$'
-# Formats not applied at all: "<case>/<format>" (or "*/<format>") -> why.
-declare -A SKIP=(
-  ["*/cloudformation"]="moto's CloudFormation ignores AWS::IAM::Role ManagedPolicyArns and has no AWS::EKS::AccessEntry, so its state would not be the template's (cfn-lint checks the templates in export-tooling.yml)"
-)
-# Top-level dump keys a format is expected to differ on: "<case>/<format>" -> keys.
+# Formats not applied for a case: "<case>/<format>" -> why (with evidence). None today.
+declare -A SKIP=()
+# Dump paths a format is expected to differ on by design (iam_state.py --ignore): "<case>/<format>" -> paths.
 declare -A IGNORE=(
-  # main.tf leaves the GitHub OIDC provider commented out (most accounts have one); terraform-oidc applies it.
+  # main.tf / template.yaml leave the GitHub OIDC provider commented out (most accounts have one); the -oidc
+  # formats apply it and are compared in full.
   ["github-deploy/terraform"]="oidc_providers"
+  ["github-deploy/cloudformation"]="oidc_providers"
 )
+# moto gap: its AWS::IAM::Role ignores ManagedPolicyArns (moto/iam/models.py Role.create_from_cloudformation_json).
+CFN_MANAGED_POLICY_ARNS_GAP="roles[].attached_policies policies[].attachment_count"
 
 if [ ! -f "$exports/manifest.json" ]; then
   echo "No $exports/manifest.json: run npm run export-fixtures first." >&2
@@ -143,25 +151,77 @@ apply() {
         "$TERRAFORM" -chdir="$dir" apply -auto-approve -input=false -no-color >&2 || return 1
       fi
       ;;
+    cloudformation | cloudformation-oidc)
+      local tpl=$dir/template.yaml deploy stack region status cmd notes=()
+      deploy=$(sed -n 's/^# Deploy: //p' "$tpl")
+      if grep -q '^# Do not deploy this file\.$' "$tpl"; then
+        [ -z "$deploy" ] || { echo "$tpl: both a Deploy command and 'Do not deploy'" >&2; return 1; }
+        notes+=("no stack (the template says do not deploy)")
+      else
+        if [[ $deploy != "aws cloudformation deploy --template-file template.yaml --stack-name "* ]]; then
+          echo "$tpl: no '# Deploy: aws cloudformation deploy ...' line" >&2
+          return 1
+        fi
+        # The command exactly as the template tells the user to run it.
+        echo "+ $deploy" >&2
+        (cd "$dir" && eval "$deploy") >&2 || return 1
+        stack=$(sed -nE 's/.* --stack-name ([^ ]+) .*/\1/p' <<<"$deploy")
+        region=$(sed -nE "s/.* --region '([^']+)'.*/\1/p" <<<"$deploy")
+        status=$(aws cloudformation describe-stacks --stack-name "$stack" ${region:+--region "$region"} \
+          --query 'Stacks[0].StackStatus' --output text) || return 1
+        if [ "$status" != CREATE_COMPLETE ]; then
+          echo "$tpl: stack $stack is $status, not CREATE_COMPLETE" >&2
+          return 1
+        fi
+        echo "stack $stack: $status" >&2
+        notes+=("stack CREATE_COMPLETE")
+        if grep -q 'Type: AWS::EKS::AccessEntry' "$tpl"; then notes+=("EKS access entries not in moto"); fi
+      fi
+      # Follow-up commands the header tells the user to run ("# aws iam ...", before the template body).
+      while IFS= read -r cmd; do
+        echo "+ $cmd" >&2
+        (cd "$dir" && eval "$cmd") >&2 || return 1
+        notes+=("ran the header's follow-up command")
+      done < <(sed -n '/^AWSTemplateFormatVersion/q; s/^# \(aws iam .*\)$/\1/p' "$tpl")
+      local IFS=';'
+      echo "${notes[*]}"
+      ;;
     *) echo "unknown format $fmt" >&2; return 1 ;;
   esac
 }
 
-# Checks the EKS stub saw every cluster the script names: one rejected call (the retry ran), one create,
-# one policy association each.
+# Checks the EKS stub saw every cluster the case's bash script(s) name: one rejected call (the retry ran),
+# one create and one policy association each. Fails if the scripts name no cluster.
 check_eks() {
-  local dump=$1 script=$2 clusters
-  clusters=$(grep -oE "create-access-entry --cluster-name='[^']+'|create-access-entry '--cluster-name=[^']+'" "$script" |
+  local dump=$1 case_dir=$2 clusters
+  clusters=$(cat "$case_dir"*.sh | grep -oE "create-access-entry --cluster-name='[^']+'" |
     sed -E "s/.*cluster-name=//; s/'//g" | sort -u | paste -sd, -)
-  "$PYTHON" - "$dump" "$clusters" <<'EOF'
+  "$PYTHON" - "$dump" "$clusters" <<'PY'
 import json, sys
 entries = json.load(open(sys.argv[1]))["eks_access_entries"]
 want = sorted(c for c in sys.argv[2].split(",") if c)
+if not want:
+    sys.exit("EKS check: the scripts create access entries but no --cluster-name='...' was found")
 got = sorted(e["cluster"] for e in entries)
 bad = [e for e in entries if (e["rejected_calls"], e["create_calls"], len(e["policies"])) != (1, 1, 1)]
 if got != want or bad:
     sys.exit(f"EKS stub: clusters {got}, expected {want}; entries not rejected/created/associated once: {bad}")
-EOF
+print(f"EKS stub: {len(got)} access entries, each rejected once, created once and associated once")
+PY
+}
+
+# iam_state.py --ignore paths for a case and format (see IGNORE and the header).
+ignores_for() {
+  local case_id=$1 fmt=$2 dir=$3 paths
+  paths=${IGNORE["$case_id/$fmt"]:-}
+  case "$fmt" in
+    terraform*) paths+=" eks_access_entries" ;;
+    cloudformation*)
+      paths+=" eks_access_entries"
+      if grep -q '^      ManagedPolicyArns:$' "$dir/template.yaml"; then paths+=" $CFN_MANAGED_POLICY_ARNS_GAP"; fi
+      ;;
+  esac
+  echo "$paths"
 }
 
 declare -a rows=()
@@ -169,14 +229,14 @@ failures=0
 for case_dir in "$exports"/*/; do
   case_id=$(basename "$case_dir")
   formats=(bash pwsh terraform cloudformation)
-  [ "$case_id" = github-deploy ] && formats+=(terraform-oidc)
+  [ "$case_id" = github-deploy ] && formats+=(terraform-oidc cloudformation-oidc)
   row="| $case_id |"
   baseline=$work/dumps/$case_id.seed.json
   reset
   seed "$case_dir"
   "$PYTHON" "$root/scripts/iam_state.py" dump >"$baseline"
   for fmt in "${formats[@]}"; do
-    reason=${SKIP["$case_id/$fmt"]:-${SKIP["*/$fmt"]:-}}
+    reason=${SKIP["$case_id/$fmt"]:-}
     if [ -n "$reason" ]; then
       row+=" skipped |"
       continue
@@ -184,7 +244,7 @@ for case_dir in "$exports"/*/; do
     printf '\n=== %s: %s\n' "$case_id" "$fmt"
     dir=$work/runs/$case_id/$fmt
     mkdir -p "$dir"
-    if [ "$fmt" = terraform-oidc ]; then
+    if [[ $fmt == *-oidc ]]; then
       "$PYTHON" "$root/scripts/derive_exports.py" github-oidc "$case_dir" "$dir"
     else
       cp -R "$case_dir". "$dir/"
@@ -200,18 +260,21 @@ for case_dir in "$exports"/*/; do
       failures=$((failures + 1))
       continue
     fi
-    if [[ $fmt == terraform* ]]; then
-      "$PYTHON" "$root/scripts/iam_state.py" dump >"$dump"
-    else
+    if [ "$fmt" = bash ] || [ "$fmt" = pwsh ]; then
       "$PYTHON" "$root/scripts/iam_state.py" dump --eks-log "$eks_log" >"$dump"
+    else
+      if [ -s "$eks_log" ]; then
+        echo "FAIL: $case_id/$fmt called the EKS stub" >&2
+        failures=$((failures + 1))
+      fi
+      "$PYTHON" "$root/scripts/iam_state.py" dump >"$dump"
     fi
-    status=applied
     if [ "$fmt" = bash ]; then
       if "$PYTHON" "$root/scripts/iam_state.py" diff "$baseline" "$dump" --ignore eks_access_entries >/dev/null; then
         echo "FAIL: $case_id/bash changed nothing in IAM" >&2
         status="**FAIL (no change)**"
         failures=$((failures + 1))
-      elif grep -q create-access-entry "$case_dir"*.sh && ! check_eks "$dump" "$case_dir"*.sh; then
+      elif grep -q create-access-entry "$case_dir"*.sh && ! check_eks "$dump" "$case_dir"; then
         status="**FAIL (EKS)**"
         failures=$((failures + 1))
       else
@@ -220,13 +283,14 @@ for case_dir in "$exports"/*/; do
       echo "--- $case_id: bash dump"
       cat "$dump"
     else
-      keys=${IGNORE["$case_id/$fmt"]:-}
-      [[ $fmt != terraform* ]] || keys+=" eks_access_entries"
+      read -ra paths <<<"$(ignores_for "$case_id" "$fmt" "$dir")"
       ignore=()
-      for key in $keys; do ignore+=(--ignore "$key"); done
+      for path in "${paths[@]}"; do ignore+=(--ignore "$path"); done
       if "$PYTHON" "$root/scripts/iam_state.py" diff "$work/dumps/$case_id.bash.json" "$dump" "${ignore[@]}"; then
         status="same as bash"
-        for key in ${IGNORE["$case_id/$fmt"]:-}; do status+=", except $key"; done
+        for path in "${paths[@]}"; do
+          if [ "$path" != eks_access_entries ]; then status+=", except $path"; fi
+        done
       else
         echo "FAIL: $case_id/$fmt: IAM state differs from bash's (diff above)" >&2
         status="**FAIL (differs)**"
@@ -236,20 +300,21 @@ for case_dir in "$exports"/*/; do
     [ -z "$note" ] || status+="; $note"
     row+=" $status |"
   done
-  [ "$case_id" = github-deploy ] || row+=" n/a |"
+  [ "$case_id" = github-deploy ] || row+=" n/a | n/a |"
   rows+=("$row")
 done
 
 {
   echo "## Apply exports to moto"
   echo
-  echo "| case | bash | pwsh | terraform | cloudformation | terraform + OIDC provider |"
-  echo "| --- | --- | --- | --- | --- | --- |"
+  echo "| case | bash | pwsh | terraform | cloudformation | terraform + OIDC provider | cloudformation + OIDC provider |"
+  echo "| --- | --- | --- | --- | --- | --- | --- |"
   printf '%s\n' "${rows[@]}"
   echo
-  echo "Skipped:"
-  for key in "${!SKIP[@]}"; do echo "- \`$key\`: ${SKIP[$key]}"; done
-  echo "- terraform \`aws_eks_access_entry\` / \`aws_eks_access_policy_association\`: not in moto; the CLI scripts' EKS steps run against scripts/aws_stub.py (tests the retry logic, not EKS)."
+  echo "Not applied or not compared:"
+  for key in "${!SKIP[@]}"; do echo "- $key: ${SKIP[$key]}"; done
+  echo "- terraform aws_eks_access_entry / aws_eks_access_policy_association and CloudFormation AWS::EKS::AccessEntry: not in moto; the CLI scripts' EKS steps run against scripts/aws_stub.py (tests the retry logic, not EKS)."
+  echo "- CloudFormation templates with ManagedPolicyArns on the role: roles[].attached_policies and policies[].attachment_count are not compared (moto's AWS::IAM::Role ignores ManagedPolicyArns)."
 } | tee -a "${GITHUB_STEP_SUMMARY:-/dev/null}"
 
 if [ "$failures" -gt 0 ]; then
