@@ -51,7 +51,7 @@ cat > policy.json <<'ROLECRAFT_EOF'
 ROLECRAFT_EOF
 
 aws iam create-role --role-name="$ROLE_NAME" --assume-role-policy-document file://trust.json --description 'Created with RoleCraft' >/dev/null
-POLICY_ARN=$(aws iam create-policy --policy-name="${ROLE_NAME}-policy" --policy-document file://policy.json --query Policy.Arn --output text)
+POLICY_ARN=$(aws iam create-policy --policy-name="${ROLE_NAME}-policy" --policy-document file://policy.json --description 'Created with RoleCraft' --query Policy.Arn --output text)
 aws iam attach-role-policy --role-name="$ROLE_NAME" --policy-arn="$POLICY_ARN"
 
 # EC2 instances use roles through an instance profile.
@@ -64,7 +64,10 @@ aws iam add-role-to-instance-profile --instance-profile-name="$ROLE_NAME" --role
 aws iam wait role-exists --role-name="$ROLE_NAME"
 ROLE_ARN=$(aws iam get-role --role-name="$ROLE_NAME" --query Role.Arn --output text)
 for attempt in 1 2 3 4 5 6; do
-  if aws eks create-access-entry --cluster-name='prod' --principal-arn="$ROLE_ARN" >/dev/null; then break; fi
+  if err=$(aws eks create-access-entry --cluster-name='prod' --principal-arn="$ROLE_ARN" 2>&1 >/dev/null); then break; fi
+  printf '%s\n' "$err" >&2
+  # Retry only while EKS rejects the new principal; any other error (no such cluster, access denied) is final.
+  if ! grep -qiE 'InvalidParameterException.*principal' <<<"$err"; then exit 1; fi
   if [ "$attempt" -eq 6 ]; then
     echo "EKS still rejects the access entry after 6 attempts (see the error above)." >&2
     exit 1

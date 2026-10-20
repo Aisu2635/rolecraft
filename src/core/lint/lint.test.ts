@@ -113,7 +113,18 @@ describe("L_SENSITIVE", () => {
     expect(ids(run(doc(allow("organizations:*", "*"))))).toContain("L_SENSITIVE");
     expect(ids(run(doc(allow("kms:Encrypt", "*"))))).not.toContain("L_SENSITIVE");
   });
+  it.each([
+    "iam:AddRoleToInstanceProfile",
+    "iam:UploadSSHPublicKey",
+    "iam:ResetServiceSpecificCredential",
+    "iam:TagRole",
+    "iam:TagUser",
+  ])("flags %s", (a) => {
+    const i = run(doc(allow(a, "arn:aws:iam::1:role/x"))).find((x) => x.id === "L_SENSITIVE");
+    expect(i?.message).toContain(a);
+  });
   it("ignores safe actions, missing services and Deny", () => {
+    expect(ids(run(doc(allow("iam:ListRoles", "*"))))).not.toContain("L_SENSITIVE");
     expect(ids(run(doc(allow("iam:GetRole", "*"))))).not.toContain("L_SENSITIVE");
     expect(ids(run(doc(allow("nosuch:*", "*"))))).not.toContain("L_SENSITIVE");
     expect(ids(run(doc({ Effect: "Deny", Action: "iam:CreateRole", Resource: "*" })))).not.toContain("L_SENSITIVE");
@@ -269,8 +280,31 @@ describe("L_PASSROLE_STAR broad resources", () => {
       expect(ids(run(doc(allow("iam:PassRole", r))))).toContain("L_PASSROLE_STAR");
     }
   });
+  it("flags any resource that matches every role in an account", () => {
+    for (const r of [
+      "arn:aws:iam::123456789012:role*",
+      "arn:*",
+      "arn:aws:iam::*:*/*",
+      "arn:aws:iam::123456789012:role/*",
+      "arn:aws-cn:iam::*:role/*",
+      "arn:aws:iam::${aws:PrincipalAccount}:role/*",
+      "arn:${aws:partition}:iam::${aws:PrincipalAccount}:role*",
+      "arn:aws:iam::9*:*",
+      "arn:aws-*:iam::*:*",
+      "arn:aws:iam::5???????????:*",
+    ]) {
+      expect(ids(run(doc(allow("iam:PassRole", r))))).toContain("L_PASSROLE_STAR");
+    }
+  });
   it("does not flag path-scoped or named roles", () => {
-    for (const r of ["arn:aws:iam::123456789012:role/svc/*", "arn:aws:iam::123456789012:role/app-*", "arn:aws:iam::123456789012:role/x"]) {
+    for (const r of [
+      "arn:aws:iam::123456789012:role/svc/*",
+      "arn:aws:iam::123456789012:role/app-*",
+      "arn:aws:iam::123456789012:role/x",
+      "arn:aws:iam::123456789012:role/q*",
+      "arn:aws:iam::*:role/app-*",
+      "arn:aws:iam::123456789012:user/*",
+    ]) {
       expect(ids(run(doc(allow("iam:PassRole", r))))).not.toContain("L_PASSROLE_STAR");
     }
   });
@@ -332,6 +366,35 @@ describe("L_QUALIFIED_ONLY", () => {
     );
     expect(ids(run(doc(allow("logs:FilterLogEvents", [lg, `${lg}:*`]))))).not.toContain("L_QUALIFIED_ONLY");
     expect(ids(run(doc(allow("logs:GetLogEvents", `${lg}:*`))))).not.toContain("L_QUALIFIED_ONLY");
+  });
+  it("treats a wildcard resource that covers the bare ARN as covering it", () => {
+    for (const cover of ["arn:aws:lambda:*:*:function:*", "*"]) {
+      expect(ids(run(doc(allow("lambda:InvokeFunction", [`${fnArn}:*`, cover]))))).not.toContain("L_QUALIFIED_ONLY");
+    }
+    expect(ids(run(doc(allow("lambda:InvokeFunction", [`${fnArn}:*`, `${fnArn}:1`]))))).toContain("L_QUALIFIED_ONLY");
+    const lg = "arn:aws:logs:us-east-1:123456789012:log-group:/app/x";
+    for (const cover of ["arn:aws:logs:*:*:log-group:*", "*"]) {
+      expect(ids(run(doc(allow("logs:FilterLogEvents", [`${lg}:*`, cover]))))).not.toContain("L_QUALIFIED_ONLY");
+    }
+  });
+  it("gives no bare-ARN info for statements the Logs module built", () => {
+    const viaModule: Grant = {
+      id: "g1",
+      service: "logs",
+      module: "logs",
+      scope: { type: "module", data: { logGroup: "/app/x" } },
+      access: { type: "preset", preset: "read-write" },
+    };
+    const r = generate({ ...createEmptyModel(), grants: [viaModule] }, catalog);
+    expect(JSON.stringify(r.policy)).toContain("logs:FilterLogEvents");
+    expect(ids(r.issues)).not.toContain("L_QUALIFIED_ONLY");
+    const generic: Grant = {
+      id: "g2",
+      service: "logs",
+      scope: { type: "arns", arns: ["arn:aws:logs:*:*:log-group:/app/x:*"] },
+      access: { type: "actions", actions: ["FilterLogEvents"] },
+    };
+    expect(ids(generate({ ...createEmptyModel(), grants: [generic] }, catalog).issues)).toContain("L_QUALIFIED_ONLY");
   });
   it("ignores Deny, missing catalog services and non-matching resources", () => {
     expect(ids(run(doc({ Effect: "Deny", Action: "lambda:InvokeFunction", Resource: `${fnArn}:*` })))).not.toContain("L_QUALIFIED_ONLY");

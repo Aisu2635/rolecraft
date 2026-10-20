@@ -42,10 +42,16 @@ function sortIssues(issues: Issue[]): Issue[] {
 
 const sortedStrs = (x: unknown): unknown => (Array.isArray(x) ? [...x].sort() : x);
 
+/** A built statement and the module that built it (undefined for generic grants). */
+interface Built {
+  statement: Statement;
+  module: string | undefined;
+}
+
 /** Drops statements identical to an earlier one (ignoring Sid); keeps the first. */
-function dedupeStatements(statements: Statement[]): Statement[] {
+function dedupeStatements(built: Built[]): Built[] {
   const seen = new Set<string>();
-  return statements.filter((s) => {
+  return built.filter(({ statement: s }) => {
     const key = JSON.stringify({ Effect: s.Effect, Condition: s.Condition, Action: sortedStrs(s.Action), Resource: sortedStrs(s.Resource) });
     if (seen.has(key)) return false;
     seen.add(key);
@@ -82,7 +88,7 @@ export function generate(
     region: model.region || undefined,
   };
 
-  const statements: Statement[] = [];
+  const built: Built[] = [];
   const internal = (grantId?: string): Issue => ({
     id: "E_INTERNAL",
     severity: "error",
@@ -115,7 +121,7 @@ export function generate(
       build = b;
     }
     const r = build(grant, svc, ctx);
-    statements.push(...r.statements);
+    built.push(...r.statements.map((statement) => ({ statement, module: grant.module })));
     issues.push(...r.issues);
   };
   for (const grant of model.grants) {
@@ -127,14 +133,17 @@ export function generate(
   }
 
   let policy: PolicyDocument | null = null;
-  if (statements.length === 0) {
+  let modules: (string | undefined)[] = [];
+  if (built.length === 0) {
     issues.push({
       id: "I_NO_PERMISSIONS",
       severity: "info",
       message: "No permissions yet. Add a service to generate a policy.",
     });
   } else {
-    policy = { Version: "2012-10-17", Statement: dedupeSids(dedupeStatements(statements)) };
+    const kept = dedupeStatements(built);
+    modules = kept.map((b) => b.module);
+    policy = { Version: "2012-10-17", Statement: dedupeSids(kept.map((b) => b.statement)) };
     issues.push(...validateIdentityPolicy(policy, catalog));
   }
 
@@ -152,7 +161,7 @@ export function generate(
     issues.push(internal());
   }
 
-  issues.push(...lint(model, policy, trust, catalog));
+  issues.push(...lint(model, policy, trust, catalog, modules));
 
   const sizes = {
     policy: policy ? policySize(policy) : 0,

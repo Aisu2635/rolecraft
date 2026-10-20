@@ -2,6 +2,7 @@ import {
   colorBackgroundContainerContent,
   colorBackgroundLayoutMain,
   colorBorderDividerDefault,
+  colorBorderItemFocused,
   colorTextBodyDefault,
   colorTextBodySecondary,
   colorTextLinkDefault,
@@ -18,6 +19,7 @@ export function applyTokenVariables(root: HTMLElement = document.body): void {
     "--rc-text": colorTextBodyDefault,
     "--rc-muted": colorTextBodySecondary,
     "--rc-link": colorTextLinkDefault,
+    "--rc-focus": colorBorderItemFocused,
     "--rc-font": fontFamilyBase,
     "--rc-mono": fontFamilyMonospace,
   };

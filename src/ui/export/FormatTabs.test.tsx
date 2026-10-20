@@ -5,8 +5,10 @@ import { useBuilderStore } from "../../state/builder";
 import { deriveOutput } from "../../state/derive";
 import { OutputPanel } from "../builder/output/OutputPanel";
 import { grantFor, readyCatalog, withCatalog } from "../builder/permissions/test-catalog";
+import { ExportButton } from "./ExportModal";
+import * as exporters from "./exporters";
 import { useFormatTabs } from "./FormatTabs";
-import { resetExportersForTests } from "./lazy";
+import { resetExportersForTests, type Exporters } from "./lazy";
 
 const store = () => useBuilderStore.getState();
 const writeText = vi.fn(() => Promise.resolve());
@@ -114,5 +116,23 @@ describe("FormatTabs", () => {
     expect(tabpanel.querySelector("pre")).toBeNull();
     expect(within(tabpanel).getAllByRole("button", { name: /^Jump to/ }).length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "Copy" })).toBeDisabled();
+  });
+
+  it("with the CLI tab open (and the Export modal opened once), one model change runs exportAll once", async () => {
+    const counted = vi.fn(exporters.exportAll);
+    resetExportersForTests(() => Promise.resolve({ ...exporters, exportAll: counted } as Exporters));
+    const cat = await s3Group();
+    render(
+      withCatalog(cat, <OutputPanel useExtraTabs={useFormatTabs} actions={(input) => <ExportButton input={input} />} />),
+    );
+    fireEvent.click(screen.getByRole("tab", { name: "CLI" }));
+    await waitFor(() => expect(activePre()).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Export" }));
+    await screen.findByRole("button", { name: "Download ZIP" });
+    fireEvent.click(screen.getAllByRole("button", { name: "Close" })[0]!);
+    counted.mockClear();
+    act(() => store().setFields({ name: "analytics-writer" }));
+    expect(activePre().textContent).toContain("analytics-writer");
+    expect(counted).toHaveBeenCalledTimes(1);
   });
 });

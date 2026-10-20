@@ -1,6 +1,7 @@
 import { builtinModules } from "node:module";
 import js from "@eslint/js";
 import tseslint from "typescript-eslint";
+import reactHooks from "eslint-plugin-react-hooks";
 
 const UI_FREE = "src/core must stay UI-free.";
 const uiPaths = [
@@ -36,6 +37,13 @@ export default tseslint.config(
   { ignores: ["dist", "coverage", "docs", ".superpowers", "test-results", "playwright-report"] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
+  {
+    // Only rules-of-hooks: exhaustive-deps stays off until after launch (turning it on means a broad churn of deps).
+    // src only: Playwright fixtures in tests/ take a `use` callback the rule mistakes for React 19 use().
+    files: ["src/**/*.{ts,tsx}"],
+    plugins: { "react-hooks": reactHooks },
+    rules: { "react-hooks/rules-of-hooks": "error", "react-hooks/exhaustive-deps": "off" },
+  },
   {
     files: ["src/core/**"],
     rules: {

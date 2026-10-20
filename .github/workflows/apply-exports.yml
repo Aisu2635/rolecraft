@@ -1,0 +1,111 @@
+name: Apply exports
+
+# Applies every export (bash, PowerShell, Terraform, CloudFormation) for the reference and variant cases to moto, a local
+# AWS emulator, and fails if an apply fails or a format leaves different IAM state than bash.
+# The logic lives in scripts/apply-exports.sh; see its header for what is applied, compared and skipped.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: ["feat/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apply-exports-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apply-exports:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      MOTO_VERSION: 5.2.4
+      AWS_CLI_VERSION: 2.38.2
+      # sha256 of awscli-exe-linux-x86_64-2.38.2.zip; its .sig was verified once against the AWS CLI Team key
+      # (FB5D B77F D5C1 18B8 0511 ADA8 A631 0ACC 4672 475C) when the version was pinned.
+      AWS_CLI_SHA256: 16a4d39d60b631d884f1260fd7755b72daef15baf6cac21131c6c71676164b37
+      PWSH_VERSION: 7.6.7
+      PWSH_SHA256: 6896f9e3a6b0a354bf470835a96da76d2f801cd50dcf047ad7c4563bf93bf431
+      TERRAFORM_VERSION: 1.9.8
+      TF_PROVIDER_VERSION: 6.69.1
+      MOTO_URL: http://127.0.0.1:5000
+      AWS_ENDPOINT_URL: http://127.0.0.1:5000
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_DEFAULT_REGION: us-east-1
+      AWS_PAGER: ""
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run export-fixtures
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: .github/workflows/apply-exports.yml
+      - name: Install moto ${{ env.MOTO_VERSION }}
+        run: python -m pip install "moto[server]==${MOTO_VERSION}"
+      - name: Start moto_server
+        run: |
+          # AWS managed policies (AmazonSSMManagedInstanceCore, ReadOnlyAccess, ...) must exist to be attached.
+          MOTO_IAM_LOAD_MANAGED_POLICIES=true nohup moto_server -H 127.0.0.1 -p 5000 >"$RUNNER_TEMP/moto.log" 2>&1 &
+          for _ in $(seq 1 30); do
+            if curl -sf "$MOTO_URL/moto-api/" >/dev/null; then echo "moto_server is up"; exit 0; fi
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/moto.log"
+          exit 1
+      - name: Cache AWS CLI ${{ env.AWS_CLI_VERSION }}
+        id: awscli-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/awscli-zip
+          key: awscli-${{ runner.os }}-${{ env.AWS_CLI_VERSION }}
+      - name: Install AWS CLI ${{ env.AWS_CLI_VERSION }} (official installer)
+        run: |
+          zip=~/awscli-zip/awscli.zip
+          if [ ! -f "$zip" ]; then
+            mkdir -p ~/awscli-zip
+            curl -sSfL -o "$zip" "https://awscli.amazonaws.com/awscli-exe-linux-x86_64-${AWS_CLI_VERSION}.zip"
+          fi
+          echo "${AWS_CLI_SHA256}  $zip" | sha256sum -c -
+          unzip -q "$zip" -d "$RUNNER_TEMP/awscli"
+          "$RUNNER_TEMP/awscli/aws/install" -i "$HOME/aws-cli" -b "$HOME/bin" --update
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+          "$HOME/bin/aws" --version | grep -q "^aws-cli/${AWS_CLI_VERSION} " || { "$HOME/bin/aws" --version; exit 1; }
+      - name: Install PowerShell ${{ env.PWSH_VERSION }} (official release)
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/pwsh.tar.gz" \
+            "https://github.com/PowerShell/PowerShell/releases/download/v${PWSH_VERSION}/powershell-${PWSH_VERSION}-linux-x64.tar.gz"
+          echo "${PWSH_SHA256}  $RUNNER_TEMP/pwsh.tar.gz" | sha256sum -c -
+          mkdir -p "$HOME/pwsh"
+          tar -xzf "$RUNNER_TEMP/pwsh.tar.gz" -C "$HOME/pwsh"
+          chmod +x "$HOME/pwsh/pwsh"
+          echo "PWSH=$HOME/pwsh/pwsh" >> "$GITHUB_ENV"
+          test "$("$HOME/pwsh/pwsh" -NoProfile -Command '$PSVersionTable.PSVersion.ToString()')" = "$PWSH_VERSION"
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+      - name: Terraform plugin cache
+        run: echo "TF_PLUGIN_CACHE_DIR=$HOME/.terraform.d/plugin-cache" >> "$GITHUB_ENV"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.terraform.d/plugin-cache
+          key: tf-apply-plugins-${{ runner.os }}-${{ env.TERRAFORM_VERSION }}-aws-${{ env.TF_PROVIDER_VERSION }}
+      - name: Unit tests for the dump comparison
+        run: python -m unittest discover -s scripts -p test_iam_state.py -v
+      - name: Apply every export to moto and compare the IAM state
+        run: bash scripts/apply-exports.sh
+        env:
+          PYTHON: python
+      - name: moto_server log
+        if: failure()
+        run: tail -n 200 "$RUNNER_TEMP/moto.log"

@@ -60,6 +60,18 @@ function ArnBuilder(props: { svc: SlimService; ctx: BuildContext; onAdd(arn: str
             <Input value={values[name] ?? ""} onChange={(e) => setValues({ ...values, [name]: e.detail.value })} />
           </FormField>
         ))}
+      {option && option.format.includes("${Account}") && !props.ctx.accountId && (
+        <FormField
+          label="Account"
+          constraintText={
+            <>
+              No account ID yet, so the account is <code>*</code>. Add it on the Review step, then rebuild the ARN.
+            </>
+          }
+        >
+          <Input value="*" readOnly />
+        </FormField>
+      )}
       {option && (
         <>
           <Box variant="code">{preview}</Box>

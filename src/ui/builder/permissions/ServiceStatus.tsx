@@ -1,9 +1,9 @@
 import Button from "@cloudscape-design/components/button";
-import StatusIndicator from "@cloudscape-design/components/status-indicator";
 import { useContext, type JSX } from "react";
 import { useStore } from "zustand";
 import type { SlimService } from "../../../core/types";
 import { CatalogContext, type LoadStatus } from "../../../state/catalog";
+import { StatusText } from "../../common/StatusText";
 
 export interface ServiceInfo {
   key: string;
@@ -30,13 +30,13 @@ export function ServiceUnavailable(props: { info: ServiceInfo }): JSX.Element {
   if (status === "error") {
     return (
       <div style={rowStyle}>
-        <StatusIndicator type="error">Couldn&apos;t load this service.</StatusIndicator>
+        <StatusText type="error">Couldn&apos;t load this service.</StatusText>
         <Button onClick={() => void catalog.getState().retry(key)}>Retry</Button>
       </div>
     );
   }
   if (status === "missing") {
-    return <StatusIndicator type="warning">Service no longer in AWS data. It is left out of the policy.</StatusIndicator>;
+    return <StatusText type="warning">Service no longer in AWS data. It is left out of the policy.</StatusText>;
   }
-  return <StatusIndicator type="loading">{`Loading ${name}…`}</StatusIndicator>;
+  return <StatusText type="loading">{`Loading ${name}…`}</StatusText>;
 }

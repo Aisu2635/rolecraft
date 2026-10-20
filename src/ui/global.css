@@ -26,16 +26,16 @@ a { color: var(--rc-link); }
 .lp-facts { display: flex; gap: 12px 22px; flex-wrap: wrap; margin-top: 26px; color: #d1d5db; font-size: 13px; }
 .lp-facts span { display: inline-flex; gap: 6px; align-items: center; }
 .lp-facts svg { color: #ff9900; }
-.lp-preview { background: #fff; color: #000716; border-radius: 16px; overflow: hidden; box-shadow: 0 20px 50px -20px #000a; min-width: 0; }
-.lp-ph { padding: 12px 16px; border-bottom: 1px solid #e9ebed; font-weight: 700; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.lp-ph .d { font-weight: 400; font-size: 13px; color: #5f6b7a; }
+.lp-preview { background: var(--rc-panel, #fff); color: var(--rc-text, #000716); border-radius: 16px; overflow: hidden; box-shadow: 0 20px 50px -20px #000a; min-width: 0; }
+.lp-ph { padding: 12px 16px; border-bottom: 1px solid var(--rc-border, #e9ebed); font-weight: 700; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.lp-ph .d { font-weight: 400; font-size: 13px; color: var(--rc-muted, #5f6b7a); }
 .lp-lines { padding: 8px 16px 4px; }
-.lp-line { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; padding: 7px 0; border-bottom: 1px solid #e9ebed; }
+.lp-line { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; padding: 7px 0; border-bottom: 1px solid var(--rc-border, #e9ebed); }
 .lp-line:last-child { border-bottom: 0; }
 .lp-who { display: inline-flex; gap: 6px; align-items: center; padding: 2px 10px; border-radius: 12px; background: #f2f8fd; border: 1px solid #b8e7ff; color: #0972d3; font-weight: 700; font-size: 13px; }
-.lp-sel { display: inline-flex; gap: 6px; align-items: center; padding: 2px 8px 2px 10px; border: 1px solid #8c8c94; border-radius: 8px; background: #fff; font-size: 13px; font-weight: 600; }
+.lp-sel { display: inline-flex; gap: 6px; align-items: center; padding: 2px 8px 2px 10px; border: 1px solid #8c8c94; border-radius: 8px; background: var(--rc-panel, #fff); font-size: 13px; font-weight: 600; }
 .lp-sel.v { border-color: #ff9900; background: #fff8ec; }
-.lp-sel svg { color: #5f6b7a; }
+.lp-sel svg { color: var(--rc-muted, #5f6b7a); }
 .lp-pre { margin: 0; background: #0f141a; color: #d1d5db; font-family: var(--rc-mono, ui-monospace, monospace); font-size: 12px; line-height: 19px; padding: 14px 16px; overflow-x: auto; white-space: pre; }
 .lp-pre .k { color: #89bdff; } .lp-pre .s { color: #9be59b; } .lp-pre .c { color: #ff9900; }
 .lp-band { max-width: 1280px; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; padding: 28px 48px; box-sizing: border-box; }
@@ -110,9 +110,14 @@ a { color: var(--rc-link); }
 @container (max-width: 460px) { .lp-ed { --lh: 2.5; } }
 @container (max-width: 360px) { .lp-ed { --lh: 3; } }
 @media (max-width: 480px) { .lp-stage { height: 440px; } }
-.lp-rc { background: #fff; transform: translateY(101%); box-shadow: 0 -10px 24px -8px rgba(0, 7, 22, 0.35); transition: transform 0.55s cubic-bezier(0.65, 0, 0.35, 1); }
+.lp-rc { background: var(--rc-panel, #fff); transform: translateY(101%); box-shadow: 0 -10px 24px -8px rgba(0, 7, 22, 0.35); transition: transform 0.55s cubic-bezier(0.65, 0, 0.35, 1); }
 .lp-tag { align-self: flex-start; display: inline-block; padding: 1px 10px; border-radius: 10px; font-size: 12px; line-height: 18px; font-weight: 700; }
 .lp-tag.good { background: #e6f6ec; color: #067a38; border: 1px solid #a6dfbd; }
+/* The preview card follows the theme (dark by default): Cloudscape puts awsui-dark-mode on body. */
+.awsui-dark-mode .lp-preview { box-shadow: 0 0 0 1px var(--rc-border), 0 20px 50px -20px #000a; }
+.awsui-dark-mode .lp-who { background: #0d2a4a; border-color: #1e5a96; color: #89bdff; }
+.awsui-dark-mode .lp-sel.v { background: #2b2112; }
+.awsui-dark-mode .lp-tag.good { background: #0f2e1c; color: #9be59b; border-color: #1f7a45; }
 .lp-out { display: flex; flex-direction: column; flex: 1; min-height: 0; gap: 8px; padding: 8px 12px 14px; }
 .lp-out .lp-pre { flex: 1; line-height: 17px; padding: 10px 12px; border-radius: 8px; overflow: hidden; white-space: pre-wrap; overflow-wrap: anywhere; font-size: clamp(7.5px, calc((100cqw - 48px) / 33), 12px); }
 .lp-l { display: block; }
@@ -146,6 +151,10 @@ a { color: var(--rc-link); }
 .rc-out { padding: 12px 16px; background: var(--rc-panel); border-left: 1px solid var(--rc-border); }
 .rc-main { padding: 18px 24px; background: var(--rc-bg); display: flex; flex-direction: column; }
 .rc-step-body { flex: 1 0 auto; }
+/* The step title takes focus on a step change; the ring shows when that came from the keyboard. */
+.rc-step-title { margin: 0 0 16px; font-size: 20px; line-height: 24px; font-weight: 700; color: var(--rc-text); border-radius: 4px; }
+.rc-step-title:focus { outline: none; }
+.rc-step-title:focus-visible { outline: 2px solid var(--rc-focus); outline-offset: 2px; }
 /* Read by screen readers, takes no space. */
 .rc-visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .rc-step-nav { display: flex; justify-content: flex-end; gap: 8px; padding-top: 16px; position: sticky; bottom: 0; background: var(--rc-bg); }
@@ -158,3 +167,14 @@ a { color: var(--rc-link); }
 .rc-st.cur { color: var(--rc-link); font-weight: 700; }
 .rc-st.cur .c { border-color: var(--rc-link); color: var(--rc-link); }
 @media (max-width: 1279px) { .rc-ws { grid-template-columns: 200px minmax(0, 1fr) 340px; } .rc-main { padding: 16px; } }
+
+/* first-run tour: the cut-out and the card glide between steps */
+/* The card takes focus on each step; the ring (the step title's) shows when that came from the keyboard. */
+.rc-tour-card:focus { outline: none; }
+.rc-tour-card:focus-visible { outline: 2px solid var(--rc-focus); outline-offset: 2px; }
+.rc-tour-anim { transition: left 0.2s ease, top 0.2s ease, width 0.2s ease, height 0.2s ease; }
+@media (prefers-reduced-motion: reduce) { .rc-tour-anim { transition: none; } }
+
+/* Cloudscape's StatusIndicator sets word-break: break-all on its inner span (with a :not(#\9) selector, hence
+   !important), which splits ordinary words mid-word. Words wrap normally; only an unbreakable ARN breaks anywhere. */
+.rc-status-text [class*="awsui_display-inline-block_"] { word-break: normal !important; overflow-wrap: anywhere !important; }

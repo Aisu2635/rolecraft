@@ -110,7 +110,7 @@ describe("ec2 module", () => {
       Resource: "arn:aws:ec2:*:*:instance/*",
       Condition: {
         StringEquals: { "aws:ResourceTag/Env": "dev" },
-        "ForAllValues:StringNotEquals": { "aws:TagKeys": ["Env"] },
+        "ForAllValues:StringNotEqualsIgnoreCase": { "aws:TagKeys": ["Env"] },
         Null: { "aws:TagKeys": "false" },
       },
     });

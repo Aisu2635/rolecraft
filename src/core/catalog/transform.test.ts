@@ -8,6 +8,7 @@ import {
   humanizeActionName,
   mapAccessLevel,
   toSlimService,
+  transformService,
 } from "./transform";
 
 const props = (
@@ -36,7 +37,6 @@ describe("mapAccessLevel", () => {
     expect(
       mapAccessLevel(props({ IsPermissionManagement: true, IsWrite: true })),
     ).toBe("Permissions management");
-    expect(mapAccessLevel(undefined)).toBe("Read");
   });
 });
 
@@ -95,8 +95,9 @@ describe("toSlimService", () => {
           Name: "B",
           ActionConditionKeys: ["k2", "k1", "k2"],
           Resources: [{ Name: "y" }, { Name: "x" }],
+          Annotations: { Properties: props({}) },
         },
-        { Name: "A" },
+        { Name: "A", Annotations: { Properties: props({}) } },
       ],
       Resources: [
         { Name: "r2", ARNFormats: ["a"], ConditionKeys: ["c", "b", "c"] },
@@ -115,8 +116,36 @@ describe("toSlimService", () => {
     expect(s.conditionKeys).toEqual(["a", "z"]);
     expect(toSlimService(raw)).toEqual(s);
   });
+  it("fails closed: drops an action missing any access flag (or Annotations / Properties) and reports it", () => {
+    // A missing IsWrite must never read as "not write": the action would show as Read and be granted by mistake.
+    const raw = {
+      Name: "zz",
+      Actions: [
+        { Name: "NoWrite", Annotations: { Properties: { IsList: false, IsPermissionManagement: false, IsTaggingOnly: false } } },
+        { Name: "NoPerm", Annotations: { Properties: { IsList: false, IsWrite: true, IsTaggingOnly: false } } },
+        { Name: "Empty", Annotations: { Properties: {} } },
+        { Name: "NoProps", Annotations: {} },
+        { Name: "NoAnnotations" },
+        { Name: "NotBool", Annotations: { Properties: { ...props({}), IsWrite: "yes" } } },
+        { Name: "Ok", Annotations: { Properties: props({ IsWrite: true }) } },
+      ],
+      Resources: [{ Name: "thing" }],
+    };
+    const { service, dropped } = transformService(raw);
+    expect(dropped).toEqual(["Empty", "NoAnnotations", "NoPerm", "NoProps", "NoWrite", "NotBool"]);
+    expect(service.actions.map((a) => [a.name, a.level])).toEqual([["Ok", "Write"]]);
+    expect(toSlimService(raw)).toEqual(service);
+    // ARNFormats is not about access: a missing list just means no ARN formats.
+    expect(service.resources).toEqual([{ name: "thing", arnFormats: [], conditionKeys: [] }]);
+  });
+  it("complete flags behave exactly as before: nothing dropped", () => {
+    const { service, dropped } = transformService(s3);
+    expect(dropped).toEqual([]);
+    expect(service).toEqual(svc);
+    expect(service.actions).toHaveLength(s3.Actions.length);
+  });
   it("tolerates missing optional top-level lists", () => {
-    const s = toSlimService({ Name: "zz", Actions: [{ Name: "A" }] });
+    const s = toSlimService({ Name: "zz", Actions: [{ Name: "A", Annotations: { Properties: props({}) } }] });
     expect(s.resources).toEqual([]);
     expect(s.conditionKeys).toEqual([]);
   });

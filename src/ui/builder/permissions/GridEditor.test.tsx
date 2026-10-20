@@ -121,6 +121,28 @@ describe("GridEditor", () => {
     expect(grants()[0]!.scope).toEqual(S3.scope);
   });
 
+  it("a generic grant on a module service shows its levels read-only, with Edit in Sentences", async () => {
+    const generic: Grant = { id: "s3g", service: "s3", scope: { type: "all" }, access: { type: "levels", levels: ["List", "Read"] } };
+    await setup(S3, generic);
+    const [, row] = bodyRows("Amazon S3");
+    expect(within(row!).queryAllByRole("radio")).toHaveLength(0);
+    expect(within(row!).getByText("List, Read")).toBeInTheDocument();
+    act(() => store().setEditor("grid"));
+    fireEvent.click(within(row!).getByRole("button", { name: "Edit in Sentences" }));
+    expect(store().editor).toBe("sentences");
+    expect(store().focusTarget).toBe("grant:s3g");
+    // The module row keeps its presets.
+    expect(within(bodyRows("Amazon S3")[0]!).getAllByRole("radio")).toHaveLength(7);
+  });
+
+  it("a generic actions grant on a module service shows its action count read-only", async () => {
+    const generic: Grant = { id: "s3h", service: "s3", scope: { type: "all" }, access: { type: "actions", actions: ["GetObject"] } };
+    await setup(generic);
+    const [row] = bodyRows("Amazon S3");
+    expect(within(row!).queryAllByRole("radio")).toHaveLength(0);
+    expect(within(row!).getByText("1 individual action")).toBeInTheDocument();
+  });
+
   it("edits the scope in a modal with the same scope editor", async () => {
     await setup(S3);
     const [row] = bodyRows("Amazon S3");
@@ -183,15 +205,15 @@ describe("GridEditor", () => {
     expect(grants().map((g) => g.id)).toEqual(["s3", "ec2"]);
   });
 
-  it("notes, as info, input the policy leaves out: actions no ARN matches, and covered S3 folders", async () => {
+  it("notes, as info, actions no ARN matches, and warns on an S3 folder that is the whole bucket", async () => {
     await setup(
       { id: "tx0", service: "textract", scope: { type: "arns", arns: [] }, access: { type: "levels", levels: ["Read"] } },
       moduleGrant("s3b", "s3", "list-read", { bucket: "data-lake", prefixes: ["reports/", "/"] }),
     );
     const notes = within(region("Amazon Textract")).getAllByText(/was left out because none of the ARNs match/);
     expect(notes[0]!.closest('[class*="status-info"]')).not.toBeNull();
-    const s3 = within(region("Amazon S3")).getByText(/the folder reports\/ is already covered and left out/);
-    expect(s3.closest('[class*="status-info"]')).not.toBeNull();
+    const s3 = within(region("Amazon S3")).getByText(/Folder 2 is the whole bucket, so the other folders add nothing/);
+    expect(s3.closest('[class*="status-warning"]')).not.toBeNull();
   });
 });
 
@@ -212,5 +234,17 @@ describe("Sentences and Grid", () => {
     expect(store().model).toBe(original);
     act(() => segments()[1]!.click());
     expect(store().model).toBe(original);
+  });
+});
+
+describe("GridEditor to-dos", () => {
+  it("lists a new grant's empty field as a to-do, not an error, until the grant is touched", async () => {
+    await setup({ ...S3, scope: { type: "module", data: { bucket: "", prefixes: [""] } } });
+    const s3 = region("Amazon S3");
+    expect(s3.querySelector("[class*=awsui_status-error]")).toBeNull();
+    expect(s3.querySelector("[class*=awsui_status-pending]")).toHaveTextContent("Enter the bucket name");
+    act(() => store().touch("grant:s3a"));
+    expect(s3.querySelector("[class*=awsui_status-pending]")).toBeNull();
+    expect(s3.querySelector("[class*=awsui_status-error]")).toHaveTextContent(/not a valid S3 bucket name/);
   });
 });

@@ -10,6 +10,9 @@ export interface ExportInput {
 
 export type ExportOutcome = { ok: true; files: ExportFile[] } | { ok: false; reason: string };
 
+/** Description every format gives the role and the managed policy (scripts/apply-exports.sh compares them on moto). */
+export const TAG = "Created with RoleCraft";
+
 export function exportable(result: GenerateResult, model: RoleModel): boolean {
   return !hasErrors(result.issues) && (result.policy !== null || model.managedPolicyArns.length > 0);
 }

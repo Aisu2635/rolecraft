@@ -4,7 +4,7 @@ import Button from "@cloudscape-design/components/button";
 import ExpandableSection from "@cloudscape-design/components/expandable-section";
 import Input, { type InputProps } from "@cloudscape-design/components/input";
 import SpaceBetween from "@cloudscape-design/components/space-between";
-import { useContext, useEffect, useMemo, useRef, useState, type JSX, type ReactNode } from "react";
+import { memo, useCallback, useContext, useEffect, useMemo, useRef, useState, type JSX, type ReactNode } from "react";
 import { useStore } from "zustand";
 import { searchServices } from "../../../core/catalog/catalog";
 import { POPULAR } from "../../../core/catalog/curated";
@@ -32,7 +32,8 @@ interface Actions {
   pending: ReadonlySet<string>;
 }
 
-function ServiceList(props: {
+/** Memoised: typing in the search or editing a grant must not re-render every list (A–Z alone is ~450 buttons). */
+const ServiceList = memo(function ServiceList(props: {
   label?: string;
   entries: ServiceIndexEntry[];
   actions: Actions;
@@ -59,7 +60,7 @@ function ServiceList(props: {
       ))}
     </ul>
   );
-}
+});
 
 /** Children mount only once expanded: the A-Z list alone is ~450 buttons. */
 function LazySection(props: { title: string; children: ReactNode }): JSX.Element {
@@ -77,7 +78,8 @@ export function ServiceSidebar(): JSX.Element {
   const catalog = useContext(CatalogContext);
   const index = useStore(catalog, (s) => s.index);
   const indexStatus = useStore(catalog, (s) => s.indexStatus);
-  const grants = useBuilderStore((s) => s.model.grants);
+  // The service of each grant, joined: a string stays equal while an edit leaves the services alone.
+  const grantServices = useBuilderStore((s) => s.model.grants.map((g) => g.service).join(","));
   const [query, setQuery] = useState("");
   const [pending, setPending] = useState<ReadonlySet<string>>(new Set());
   const [failed, setFailed] = useState<string | null>(null);
@@ -116,7 +118,7 @@ export function ServiceSidebar(): JSX.Element {
     await Promise.all([...used].filter((k) => status[k] === "error").map((k) => retry(k)));
   };
 
-  const choose = (key: string): void => {
+  const choose = useCallback((key: string): void => {
     // The ref guards synchronously; state alone would let a fast double click add two grants.
     if (inFlight.current.has(key)) return;
     inFlight.current.add(key);
@@ -140,15 +142,15 @@ export function ServiceSidebar(): JSX.Element {
       inFlight.current.delete(key);
       setPending(new Set(inFlight.current));
     })();
-  };
-  const actions: Actions = { choose, pending };
+  }, [catalog]);
+  const actions: Actions = useMemo(() => ({ choose, pending }), [choose, pending]);
 
   const results = useMemo(() => (index ? searchServices(index, query, 20) : []), [index, query]);
   const counts = useMemo(() => {
     const m = new Map<string, number>();
-    for (const g of grants) m.set(g.service, (m.get(g.service) ?? 0) + 1);
+    for (const service of grantServices ? grantServices.split(",") : []) m.set(service, (m.get(service) ?? 0) + 1);
     return m;
-  }, [grants]);
+  }, [grantServices]);
   const sections = useMemo(() => {
     if (!index) return null;
     const byKey = new Map(index.services.map((s) => [s.key, s]));
@@ -165,7 +167,10 @@ export function ServiceSidebar(): JSX.Element {
     };
   }, [index]);
 
-  const inRole = sections ? [...counts.keys()].flatMap((k) => sections.byKey.get(k) ?? []) : [];
+  const inRole = useMemo(
+    () => (sections ? [...counts.keys()].flatMap((k) => sections.byKey.get(k) ?? []) : []),
+    [sections, counts],
+  );
   const failedName = failed && sections ? (sections.byKey.get(failed)?.name ?? failed) : failed;
 
   return (

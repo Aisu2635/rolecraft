@@ -5,7 +5,6 @@ import { s3Module } from "../../../core/engine/modules/s3";
 import { runModule } from "../../../core/engine/modules/types";
 import type { Grant } from "../../../core/model/model";
 import type { Issue, SlimService } from "../../../core/types";
-import { createEmptyModel } from "../../../core/model/model";
 import { useBuilderStore } from "../../../state/builder";
 import { S3ScopeEditor } from "./S3ScopeEditor";
 import { ScopeHarness } from "./harness";
@@ -55,6 +54,23 @@ describe("S3ScopeEditor", () => {
     expect(screen.getByRole("button", { name: "Remove prefix 1" })).toBeDisabled();
   });
 
+  it("Add prefix on a lone empty row focuses that row instead of adding a second empty one", () => {
+    const seen = setup({ bucket: "b-ucket", prefixes: [""] });
+    expect(screen.getByLabelText("Prefix 1")).toHaveAttribute("placeholder", "Folder, e.g. reports/");
+    fireEvent.click(screen.getByRole("button", { name: "Add prefix" }));
+    expect(seen).toEqual([]);
+    expect(screen.getAllByLabelText(/^Prefix \d$/)).toHaveLength(1);
+    expect(screen.getByLabelText("Prefix 1")).toHaveFocus();
+    fireEvent.change(screen.getByLabelText("Prefix 1"), { target: { value: "reports/" } });
+    expect(data(seen.at(-1))?.prefixes).toEqual(["reports/"]);
+  });
+
+  it("Add prefix appends a row after filled rows", () => {
+    const seen = setup({ bucket: "b-ucket", prefixes: ["a/", "b/"] });
+    fireEvent.click(screen.getByRole("button", { name: "Add prefix" }));
+    expect(data(seen.at(-1))?.prefixes).toEqual(["a/", "b/", ""]);
+  });
+
   it("toggles navigation", () => {
     const seen = setup({ bucket: "b-ucket", prefixes: ["a/"], allowNavigation: false });
     fireEvent.click(screen.getByLabelText("Allow navigating to the folder"));
@@ -70,12 +86,12 @@ describe("S3ScopeEditor", () => {
     expect(screen.getByText("bad bucket")).toBeInTheDocument();
   });
 
-  it("shows errors without a blur after replaceModel, and hides them again after reset", () => {
+  it("shows errors without a blur once every error is revealed, and hides them again after reset", () => {
     const issues: Issue[] = [
       { id: "E_MODULE_DATA", severity: "error", message: "bad bucket", path: "data.bucket", grantId: "g1" },
       { id: "E_MODULE_DATA", severity: "error", message: "bad prefix", path: "data.prefixes[0]", grantId: "g1" },
     ];
-    act(() => useBuilderStore.getState().replaceModel(createEmptyModel()));
+    act(() => useBuilderStore.getState().revealAllErrors());
     const { unmount } = render(
       <S3ScopeEditor data={{ bucket: "Bad", prefixes: ["x"] }} issues={issues} onChange={() => {}} />,
     );
@@ -98,7 +114,7 @@ describe("S3ScopeEditor", () => {
       access: { type: "preset", preset: "list-read" },
     };
     const { issues } = runModule(s3Module, grant, { key: "s3" } as unknown as SlimService, { partition: "aws" });
-    act(() => useBuilderStore.getState().replaceModel(createEmptyModel()));
+    act(() => useBuilderStore.getState().revealAllErrors());
     render(<S3ScopeEditor data={data} issues={issues} onChange={() => {}} />);
     expect(screen.getByLabelText("Prefix 2")).toHaveAccessibleDescription(/Folder 2 is empty\. Fill it in or remove it\./);
     expect(screen.getByLabelText("Prefix 1")).not.toHaveAccessibleDescription(/is empty/);

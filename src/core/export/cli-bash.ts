@@ -1,9 +1,13 @@
-import { EKS_COMMENTS, EKS_GROUP_COMMENT, EKS_RETRY, EKS_RETRY_FAILED, EKS_RETRY_MESSAGE, EKS_VIEW_POLICY, NO_REGION_MESSAGE, eksClusters } from "./eks";
+import { EKS_COMMENTS, EKS_GROUP_COMMENT, EKS_PROPAGATION_ERROR, EKS_RETRY, EKS_RETRY_FAILED, EKS_RETRY_MESSAGE, EKS_VIEW_POLICY, NO_REGION_MESSAGE, eksClusters } from "./eks";
 import { stringifyPolicy, type ExportFile } from "./json";
-import { accountMismatch, githubAccount, shQuote, type ExportInput } from "./types";
+import { accountMismatch, githubAccount, shQuote, TAG, type ExportInput } from "./types";
 
 // Every flag whose value comes from a name is written --flag=value: IAM names may start with "-", which the
 // AWS CLI's argument parser would read as an option if the value were a separate word.
+
+/** Same description as Terraform's and CloudFormation's managed policy (scripts/apply-exports.sh compares them). */
+const CREATE_POLICY =
+  `POLICY_ARN=$(aws iam create-policy --policy-name="\${ROLE_NAME}-policy" --policy-document file://policy.json --description ${shQuote(TAG)} --query Policy.Arn --output text)`;
 
 const EOF_MARK = "ROLECRAFT_EOF";
 const GITHUB_OIDC_CHECK = [
@@ -51,7 +55,10 @@ function eksSteps(clusters: string[], arnVar: string, regionName: string | undef
     const cluster = `--cluster-name=${shQuote(c)} --principal-arn="$${arnVar}"`;
     return [
       `for attempt in ${Array.from({ length: attempts }, (_, i) => i + 1).join(" ")}; do`,
-      `  if aws eks create-access-entry ${cluster}${region} >/dev/null; then break; fi`,
+      `  if err=$(aws eks create-access-entry ${cluster}${region} 2>&1 >/dev/null); then break; fi`,
+      `  printf '%s\\n' "$err" >&2`,
+      "  # Retry only while EKS rejects the new principal; any other error (no such cluster, access denied) is final.",
+      `  if ! grep -qiE ${shQuote(EKS_PROPAGATION_ERROR)} <<<"$err"; then exit 1; fi`,
       `  if [ "$attempt" -eq ${attempts} ]; then`,
       `    echo "${EKS_RETRY_FAILED}." >&2`,
       "    exit 1",
@@ -92,7 +99,7 @@ export function exportCliBash(input: ExportInput): ExportFile {
         add(`aws iam put-${kind}-policy ${who} --policy-name="\${ROLE_NAME}-inline" --policy-document file://policy.json`);
       } else {
         add(
-          'POLICY_ARN=$(aws iam create-policy --policy-name="${ROLE_NAME}-policy" --policy-document file://policy.json --query Policy.Arn --output text)',
+          CREATE_POLICY,
           `aws iam attach-${kind}-policy ${who} --policy-arn="$POLICY_ARN"`,
         );
       }
@@ -137,7 +144,7 @@ export function exportCliBash(input: ExportInput): ExportFile {
     add("# GitHub Actions needs an OIDC identity provider in this account (created once).", ...GITHUB_OIDC_CHECK, "");
   }
   add(
-    "aws iam create-role --role-name=\"$ROLE_NAME\" --assume-role-policy-document file://trust.json --description 'Created with RoleCraft' >/dev/null",
+    `aws iam create-role --role-name="$ROLE_NAME" --assume-role-policy-document file://trust.json --description ${shQuote(TAG)} >/dev/null`,
   );
   if (result.policy) {
     if (inline) {
@@ -146,7 +153,7 @@ export function exportCliBash(input: ExportInput): ExportFile {
       );
     } else {
       add(
-        'POLICY_ARN=$(aws iam create-policy --policy-name="${ROLE_NAME}-policy" --policy-document file://policy.json --query Policy.Arn --output text)',
+        CREATE_POLICY,
         'aws iam attach-role-policy --role-name="$ROLE_NAME" --policy-arn="$POLICY_ARN"',
       );
     }

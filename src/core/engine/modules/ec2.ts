@@ -97,11 +97,11 @@ function build(
       sel.type === "tag"
         ? {
             StringEquals: { [`aws:ResourceTag/${sel.key}`]: sel.value },
-            // Stop the grant from retagging instances out of (or into) its own scope.
+            // Stop the grant from retagging instances out of (or into) its own scope, in any letter case of the key.
             // DeleteTags without a tag list deletes every tag; require an explicit list.
             ...(preset === "tags"
               ? {
-                  "ForAllValues:StringNotEquals": { "aws:TagKeys": [sel.key] },
+                  "ForAllValues:StringNotEqualsIgnoreCase": { "aws:TagKeys": [sel.key] },
                   Null: { "aws:TagKeys": "false" },
                 }
               : {}),

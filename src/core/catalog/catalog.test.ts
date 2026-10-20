@@ -4,6 +4,7 @@ import ec2 from "../__fixtures__/aws/ec2.json";
 import textract from "../__fixtures__/aws/textract.json";
 import iam from "../__fixtures__/aws/iam.json";
 import { createCatalog, searchServices } from "./catalog";
+import { CURATED } from "./curated";
 import { buildIndex, toSlimService } from "./transform";
 
 const services = [s3, ec2, textract, iam].map(toSlimService);
@@ -68,5 +69,36 @@ describe("createCatalog", () => {
     expect(c.hasService("ec2")).toBe(true);
     expect(c.getService("nope")).toBeUndefined();
     expect(c.hasService("nope")).toBe(false);
+  });
+});
+
+describe("aliases", () => {
+  const full: [string, string][] = [
+    ["s3", "Simple Storage Service"],
+    ["ec2", "Elastic Compute Cloud"],
+    ["iam", "Identity and Access Management"],
+    ["sqs", "Simple Queue Service"],
+    ["sns", "Simple Notification Service"],
+    ["rds", "Relational Database Service"],
+    ["eks", "Elastic Kubernetes Service"],
+    ["ecr", "Elastic Container Registry"],
+    ["kms", "Key Management Service"],
+  ];
+  it("curated entries carry their full AWS names as aliases", () => {
+    for (const [key, alias] of full) expect(CURATED[key]?.aliases).toEqual([alias]);
+    expect(CURATED.lambda?.aliases).toEqual([]);
+  });
+  it("finds a service by its alias, the same way as by its name", () => {
+    const idx = {
+      generatedAt: "x",
+      services: full.map(([key]) => ({ key, name: CURATED[key]!.name, category: "Other" as const, actionCount: 1 })),
+    };
+    expect(searchServices(index, "Simple Storage").map((e) => e.key)).toEqual(["s3"]);
+    expect(searchServices(index, "simple storage service")[0]?.key).toBe("s3");
+    for (const [key, alias] of full) expect(searchServices(idx, alias)[0]?.key).toBe(key);
+    // A word prefix of an alias ranks like a name word prefix; a mid-word substring ranks below it.
+    expect(searchServices(idx, "kubern").map((e) => e.key)).toEqual(["eks"]);
+    expect(searchServices(idx, "ubernetes").map((e) => e.key)).toEqual(["eks"]);
+    expect(searchServices(idx, "simple").map((e) => e.key)).toEqual(["s3", "sns", "sqs"]);
   });
 });

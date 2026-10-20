@@ -1,6 +1,6 @@
-import { EKS_COMMENTS, EKS_GROUP_COMMENT, EKS_RETRY, EKS_RETRY_FAILED, EKS_RETRY_MESSAGE, EKS_VIEW_POLICY, NO_REGION_MESSAGE, eksClusters } from "./eks";
+import { EKS_COMMENTS, EKS_GROUP_COMMENT, EKS_PROPAGATION_ERROR, EKS_RETRY, EKS_RETRY_FAILED, EKS_RETRY_MESSAGE, EKS_VIEW_POLICY, NO_REGION_MESSAGE, eksClusters } from "./eks";
 import { stringifyPolicy, type ExportFile } from "./json";
-import { accountMismatch, githubAccount, psQuote, type ExportInput } from "./types";
+import { accountMismatch, githubAccount, psQuote, TAG, type ExportInput } from "./types";
 
 // Every flag whose value comes from a name is one token "--flag=$Var" (or '--flag=literal'): IAM names may
 // start with "-", which the AWS CLI's argument parser would read as an option if the value were a separate
@@ -17,6 +17,10 @@ function aws(step: string, command: string): string[] {
 function asciiJson(s: string): string {
   return s.replace(/[\u007f-\uffff]/g, (c) => "\\u" + c.charCodeAt(0).toString(16).padStart(4, "0"));
 }
+
+/** Same description as Terraform's and CloudFormation's managed policy (scripts/apply-exports.sh compares them). */
+const CREATE_POLICY =
+  `$PolicyArn = aws iam create-policy "--policy-name=\${RoleName}-policy" --policy-document file://policy.json --description ${psQuote(TAG)} --query Policy.Arn --output text`;
 
 const GITHUB_OIDC_CHECK = [
   `$existing = aws iam list-open-id-connect-providers --query "OpenIDConnectProviderList[?ends_with(Arn, '/token.actions.githubusercontent.com')].Arn" --output text --no-cli-pager`,
@@ -69,8 +73,16 @@ function eksSteps(clusters: string[], arnVar: string, regionName: string | undef
     const cluster = `${psQuote(`--cluster-name=${c}`)} "--principal-arn=$${arnVar}"`;
     return [
       "for ($Attempt = 1; ; $Attempt++) {",
-      `  aws eks create-access-entry ${cluster}${region} --no-cli-pager | Out-Null`,
+      // Scoped to the script block: stderr text and a non-zero exit must not stop the script here.
+      "  $EksError = & {",
+      "    $ErrorActionPreference = 'Continue'",
+      "    $PSNativeCommandUseErrorActionPreference = $false",
+      `    aws eks create-access-entry ${cluster}${region} --no-cli-pager 2>&1 | ForEach-Object { "$_" }`,
+      "  }",
       "  if ($LASTEXITCODE -eq 0) { break }",
+      "  # Retry only while EKS rejects the new principal; any other error (no such cluster, access denied) is final.",
+      `  if ("$EksError" -notmatch ${psQuote(EKS_PROPAGATION_ERROR)}) { throw "aws failed: create-access-entry. $EksError" }`,
+      '  Write-Warning "$EksError"',
       `  if ($Attempt -ge ${attempts}) { throw "aws failed: create-access-entry. ${EKS_RETRY_FAILED}." }`,
       `  Write-Output "${EKS_RETRY_MESSAGE} ($Attempt/${attempts})."`,
       `  Start-Sleep -Seconds ${seconds}`,
@@ -114,10 +126,7 @@ export function exportCliPowerShell(input: ExportInput): ExportFile {
         );
       } else {
         add(
-          ...aws(
-            "create-policy",
-            '$PolicyArn = aws iam create-policy "--policy-name=${RoleName}-policy" --policy-document file://policy.json --query Policy.Arn --output text',
-          ),
+          ...aws("create-policy", CREATE_POLICY),
           ...aws(
             `attach-${kind}-policy`,
             `aws iam attach-${kind}-policy "--${kind}-name=$PrincipalName" "--policy-arn=$PolicyArn"`,
@@ -173,7 +182,7 @@ export function exportCliPowerShell(input: ExportInput): ExportFile {
   add(
     ...aws(
       "create-role",
-      "aws iam create-role \"--role-name=$RoleName\" --assume-role-policy-document file://trust.json --description 'Created with RoleCraft' | Out-Null",
+      `aws iam create-role "--role-name=$RoleName" --assume-role-policy-document file://trust.json --description ${psQuote(TAG)} | Out-Null`,
     ),
   );
   if (result.policy) {
@@ -186,10 +195,7 @@ export function exportCliPowerShell(input: ExportInput): ExportFile {
       );
     } else {
       add(
-        ...aws(
-          "create-policy",
-          '$PolicyArn = aws iam create-policy "--policy-name=${RoleName}-policy" --policy-document file://policy.json --query Policy.Arn --output text',
-        ),
+        ...aws("create-policy", CREATE_POLICY),
         ...aws("attach-role-policy", 'aws iam attach-role-policy "--role-name=$RoleName" "--policy-arn=$PolicyArn"'),
       );
     }

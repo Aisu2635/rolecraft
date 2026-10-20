@@ -113,7 +113,7 @@ Build / CI
 | Tests | Vitest (core), Playwright (smoke e2e) |
 | Analytics | Cloudflare Web Analytics (cookieless, no banner needed) |
 | Hosting | Cloudflare Pages, Git-connected, custom domain `rolecraft.omhinge.cloud` |
-| License | MIT |
+| License | Apache-2.0 |
 
 ---
 
@@ -393,7 +393,7 @@ Templates display a **"Verified on AWS · <date>"** badge sourced from the last 
 ---
 
 ## 12. Deployment
-- **Repo:** GitHub `rolecraft` (public, MIT) under the owner's account.
+- **Repo:** GitHub `rolecraft` (public, Apache-2.0) under the owner's account.
 - **Cloudflare Pages:** connect repo; build `npm run build`; output `dist`; Node 22+. Preview deploys per PR.
 - **Domain:** in Cloudflare Pages → Custom domains → `rolecraft.omhinge.cloud` (DNS is already on Cloudflare, so the CNAME is created automatically; TLS automatic).
 - **Headers:** `public/_headers` for CSP, `Cache-Control: public, max-age=31536000, immutable` on hashed assets and `max-age=3600` on `/data/*`.

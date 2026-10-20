@@ -1,27 +1,33 @@
 import type { Category } from "../types";
 
 type C = Category;
-const e = (name: string, category: C) => ({ name, category });
+export interface CuratedEntry {
+  name: string;
+  category: Category;
+  /** Other names people search by (the full AWS name); matched like the display name. */
+  aliases: string[];
+}
+const e = (name: string, category: C, aliases: string[] = []): CuratedEntry => ({ name, category, aliases });
 
-export const CURATED: Record<string, { name: string; category: Category }> = {
-  s3: e("Amazon S3", "Storage"),
-  ec2: e("Amazon EC2", "Compute"),
+export const CURATED: Record<string, CuratedEntry> = {
+  s3: e("Amazon S3", "Storage", ["Simple Storage Service"]),
+  ec2: e("Amazon EC2", "Compute", ["Elastic Compute Cloud"]),
   lambda: e("AWS Lambda", "Serverless"),
-  ecr: e("Amazon ECR", "Containers"),
-  eks: e("Amazon EKS", "Containers"),
+  ecr: e("Amazon ECR", "Containers", ["Elastic Container Registry"]),
+  eks: e("Amazon EKS", "Containers", ["Elastic Kubernetes Service"]),
   dynamodb: e("Amazon DynamoDB", "Database"),
   bedrock: e("Amazon Bedrock", "AI/ML"),
-  iam: e("AWS IAM", "Security & Identity"),
+  iam: e("AWS IAM", "Security & Identity", ["Identity and Access Management"]),
   logs: e("Amazon CloudWatch Logs", "Management"),
   secretsmanager: e("AWS Secrets Manager", "Security & Identity"),
-  kms: e("AWS KMS", "Security & Identity"),
-  sqs: e("Amazon SQS", "Messaging"),
+  kms: e("AWS KMS", "Security & Identity", ["Key Management Service"]),
+  sqs: e("Amazon SQS", "Messaging", ["Simple Queue Service"]),
   textract: e("Amazon Textract", "AI/ML"),
   cloudfront: e("Amazon CloudFront", "Networking"),
   apigateway: e("Amazon API Gateway", "Networking"),
   "execute-api": e("Amazon API Gateway (Execute API)", "Networking"),
-  sns: e("Amazon SNS", "Messaging"),
-  rds: e("Amazon RDS", "Database"),
+  sns: e("Amazon SNS", "Messaging", ["Simple Notification Service"]),
+  rds: e("Amazon RDS", "Database", ["Relational Database Service"]),
   elasticloadbalancing: e("Elastic Load Balancing", "Networking"),
   autoscaling: e("Amazon EC2 Auto Scaling", "Compute"),
   cloudwatch: e("Amazon CloudWatch", "Management"),

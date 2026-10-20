@@ -5,9 +5,10 @@ import Modal from "@cloudscape-design/components/modal";
 import SpaceBetween from "@cloudscape-design/components/space-between";
 import Table from "@cloudscape-design/components/table";
 import Tabs from "@cloudscape-design/components/tabs";
-import { useMemo, useState, type JSX } from "react";
+import { useEffect, useMemo, useState, type JSX } from "react";
 import type { ExportFile } from "../../core/export/json";
 import type { ExportInput } from "../../core/export/types";
+import { useBuilderStore } from "../../state/builder";
 import { CodeView } from "../builder/output/CodeView";
 import { IssuesList } from "../builder/output/IssuesList";
 import { downloadFile } from "../common/download";
@@ -24,8 +25,14 @@ export function ExportModal(props: { visible: boolean; onDismiss(): void; input:
   const { input } = props;
   const exporters = useExporters(props.visible);
   const { mod } = exporters;
-  const outcome = useMemo(() => (mod ? mod.exportAll(input) : undefined), [mod, input]);
+  // Only while open: a closed modal must not export again on every edit.
+  const outcome = useMemo(() => (mod && props.visible ? mod.exportAll(input) : undefined), [mod, input, props.visible]);
   const [tab, setTab] = useState<string>();
+  const blocked = props.visible && outcome !== undefined && !outcome.ok;
+  // The blocked view lists every error as an error, to-dos included, and the builder's fields show them too.
+  useEffect(() => {
+    if (blocked) useBuilderStore.getState().revealAllErrors();
+  }, [blocked]);
   const close = (
     <Box float="right">
       <Button onClick={props.onDismiss}>Close</Button>

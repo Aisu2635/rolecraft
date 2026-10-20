@@ -75,7 +75,7 @@ if (-not $existing -or $existing -eq 'None') {
 
 aws iam create-role "--role-name=$RoleName" --assume-role-policy-document file://trust.json --description 'Created with RoleCraft' --no-cli-pager | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "aws failed: create-role" }
-$PolicyArn = aws iam create-policy "--policy-name=${RoleName}-policy" --policy-document file://policy.json --query Policy.Arn --output text --no-cli-pager
+$PolicyArn = aws iam create-policy "--policy-name=${RoleName}-policy" --policy-document file://policy.json --description 'Created with RoleCraft' --query Policy.Arn --output text --no-cli-pager
 if ($LASTEXITCODE -ne 0) { throw "aws failed: create-policy" }
 aws iam attach-role-policy "--role-name=$RoleName" "--policy-arn=$PolicyArn" --no-cli-pager
 if ($LASTEXITCODE -ne 0) { throw "aws failed: attach-role-policy" }

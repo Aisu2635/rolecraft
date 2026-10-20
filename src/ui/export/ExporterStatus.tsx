@@ -11,14 +11,17 @@ import type { ExportersState } from "./lazy";
 const UPDATED = "RoleCraft has been updated. Reload to continue.";
 const TOO_LARGE = "This role is too large to keep in the link. Export or copy it before reloading.";
 
-/** After a redeploy: Reload, with the role written into the link first so the reload restores it. */
+/**
+ * After a redeploy: Reload, with the role written into the link first so the reload restores it. A role too large
+ * for the link would be lost, so Reload stops and warns instead; Reload anyway is the user's informed choice.
+ */
 function StaleNotice(props: { reload: () => void }): JSX.Element {
   const tooLarge = useBuilderStore((s) => s.shareStatus === "too-large");
   const reload = (): void => {
     // Flush now: the debounced hash write would be lost to the reload.
     const status = syncHash(useBuilderStore.getState().model, window.location, window.history);
     useBuilderStore.getState().setShareStatus(status);
-    props.reload();
+    if (status === "ok") props.reload();
   };
   return (
     <SpaceBetween size="s">
@@ -30,7 +33,7 @@ function StaleNotice(props: { reload: () => void }): JSX.Element {
       ) : (
         <Box>{UPDATED} Your role is kept in the link.</Box>
       )}
-      <Button onClick={reload}>Reload</Button>
+      {tooLarge ? <Button onClick={props.reload}>Reload anyway</Button> : <Button onClick={reload}>Reload</Button>}
     </SpaceBetween>
   );
 }

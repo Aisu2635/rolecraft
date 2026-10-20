@@ -1,10 +1,10 @@
 import Button from "@cloudscape-design/components/button";
 import FormField from "@cloudscape-design/components/form-field";
-import Input from "@cloudscape-design/components/input";
+import Input, { type InputProps } from "@cloudscape-design/components/input";
 import SpaceBetween from "@cloudscape-design/components/space-between";
-import { useState, type JSX, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useRef, type JSX, type ReactNode } from "react";
 import type { Issue } from "../../../core/types";
-import { useBuilderStore } from "../../../state/builder";
+import { isRevealed, useBuilderStore } from "../../../state/builder";
 import { errorTextAt } from "../issues";
 import { useFocusTarget } from "../useFocusTarget";
 
@@ -13,6 +13,12 @@ export const isRecord = (v: unknown): v is Record<string, unknown> =>
 
 export const str = (v: unknown): string => (typeof v === "string" ? v : "");
 
+/**
+ * The touched id of the scope fields below it: their grant's focus id, which is what `focusIdFor` gives the grant's
+ * issues, so the output panel holds them back until the user has left one of these fields.
+ */
+export const ScopeTouchId = createContext("");
+
 /** A form field whose error appears after its first blur, so a fresh grant is not covered in red. */
 export function ScopeField(props: {
   label: string;
@@ -20,15 +26,12 @@ export function ScopeField(props: {
   error?: string | undefined;
   children: ReactNode;
 }): JSX.Element {
-  const [touched, setTouched] = useState(false);
-  const reveal = useBuilderStore((s) => s.revealErrors);
+  const id = useContext(ScopeTouchId);
+  const touch = useBuilderStore((s) => s.touch);
+  const revealed = useBuilderStore((s) => isRevealed(s, id));
   return (
-    <div onBlur={() => setTouched(true)}>
-      <FormField
-        label={props.label}
-        description={props.description}
-        errorText={touched || reveal ? props.error : undefined}
-      >
+    <div onBlur={() => touch(id)}>
+      <FormField label={props.label} description={props.description} errorText={revealed ? props.error : undefined}>
         {props.children}
       </FormField>
     </div>
@@ -39,21 +42,32 @@ function ListItem(props: {
   label: string;
   removeLabel: string;
   value: string;
+  placeholder?: string | undefined;
+  inputRef?: ((input: InputProps.Ref | null) => void) | undefined;
   error?: string | undefined;
   canRemove: boolean;
   focusId?: string | undefined;
   onChange(v: string): void;
   onRemove(): void;
 }): JSX.Element {
-  const [touched, setTouched] = useState(false);
-  const reveal = useBuilderStore((s) => s.revealErrors);
-  const ref = useFocusTarget<HTMLDivElement>(props.focusId ?? "", () => setTouched(true));
+  const scopeId = useContext(ScopeTouchId);
+  const id = props.focusId ?? scopeId;
+  const touch = useBuilderStore((s) => s.touch);
+  const revealed = useBuilderStore((s) => isRevealed(s, id));
+  const onFocus = useCallback(() => touch(id), [touch, id]);
+  const ref = useFocusTarget<HTMLDivElement>(props.focusId ?? "", onFocus);
   return (
-    <div ref={ref} onBlur={() => setTouched(true)}>
-      <FormField errorText={touched || reveal ? props.error : undefined} stretch>
+    <div ref={ref} onBlur={onFocus}>
+      <FormField errorText={revealed ? props.error : undefined} stretch>
         <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
           <div style={{ flex: 1 }}>
-            <Input ariaLabel={props.label} value={props.value} onChange={(e) => props.onChange(e.detail.value)} />
+            <Input
+              ref={props.inputRef}
+              ariaLabel={props.label}
+              value={props.value}
+              placeholder={props.placeholder}
+              onChange={(e) => props.onChange(e.detail.value)}
+            />
           </div>
           <Button
             iconName="close"
@@ -75,6 +89,13 @@ export function StringList(props: {
   removeNoun: string;
   addLabel: string;
   values: string[];
+  /** Placeholder of every row's input. */
+  placeholder?: string;
+  /**
+   * With a single empty row, Add focuses that row instead of adding a second empty one (for lists where an empty
+   * row beside others is an error).
+   */
+  focusLoneEmpty?: boolean;
   /** Fewest rows the list may have; the remove buttons are disabled at this size. */
   min: number;
   issues: Issue[];
@@ -85,6 +106,11 @@ export function StringList(props: {
   onChange(values: string[]): void;
 }): JSX.Element {
   const { values, onChange } = props;
+  const inputs = useRef<(InputProps.Ref | null)[]>([]);
+  const add = (): void => {
+    if (props.focusLoneEmpty && values.length === 1 && values[0] === "") inputs.current[0]?.focus();
+    else onChange([...values, ""]);
+  };
   return (
     <SpaceBetween size="xs">
       {values.map((v, i) => (
@@ -93,6 +119,10 @@ export function StringList(props: {
           label={`${props.item} ${i + 1}`}
           removeLabel={`Remove ${props.removeNoun} ${i + 1}`}
           value={v}
+          placeholder={props.placeholder}
+          inputRef={(input) => {
+            inputs.current[i] = input;
+          }}
           error={errorTextAt(props.issues, props.pathOf(i))}
           canRemove={values.length > props.min}
           focusId={props.focusIdOf?.(i)}
@@ -100,7 +130,7 @@ export function StringList(props: {
           onRemove={() => onChange(values.filter((_, j) => j !== i))}
         />
       ))}
-      <Button iconName="add-plus" onClick={() => onChange([...values, ""])}>
+      <Button iconName="add-plus" onClick={add}>
         {props.addLabel}
       </Button>
     </SpaceBetween>

@@ -2,10 +2,13 @@ import createWrapper from "@cloudscape-design/components/test-utils/dom";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { useBuilderStore } from "../../../state/builder";
+import { DerivedProvider } from "../../../state/derive";
 import { TrustStep } from "./TrustStep";
 
 const store = () => useBuilderStore.getState();
 const trust = () => store().model.trust;
+/** As in the Builder, the step reads the derived output from DerivedProvider. */
+const renderStep = () => render(<TrustStep />, { wrapper: DerivedProvider });
 
 function pick(label: string): void {
   const tiles = createWrapper(document.body).findTiles()!;
@@ -25,12 +28,12 @@ afterEach(cleanup);
 
 describe("TrustStep", () => {
   it("names the tiles' group Trusted entity", () => {
-    render(<TrustStep />);
+    renderStep();
     expect(screen.getByRole("radiogroup", { name: "Trusted entity" })).toBeInTheDocument();
   });
 
   it("offers the six trusted entities, EC2 selected by default", () => {
-    render(<TrustStep />);
+    renderStep();
     const tiles = createWrapper(document.body).findTiles()!;
     expect(tiles.findItems().map((t) => t.findLabel().getElement().textContent)).toEqual([
       "EC2 instance",
@@ -44,7 +47,7 @@ describe("TrustStep", () => {
   });
 
   it("maps the service tiles to service trust", () => {
-    render(<TrustStep />);
+    renderStep();
     pick("Lambda function");
     expect(trust()).toEqual({ kind: "service", service: "lambda" });
     pick("ECS task");
@@ -52,21 +55,21 @@ describe("TrustStep", () => {
   });
 
   it("picking GitHub Actions sets the github default", () => {
-    render(<TrustStep />);
+    renderStep();
     pick("GitHub Actions");
     expect(trust()).toEqual({ kind: "github", owner: "", repo: "", ref: { type: "branch", value: "main" } });
     expect(screen.getByLabelText("GitHub owner")).toBeInTheDocument();
   });
 
   it("does not show an error for a field the user has not left yet", () => {
-    render(<TrustStep />);
+    renderStep();
     pick("GitHub Actions");
     type("GitHub owner", "-bad");
     expect(screen.queryByText(/GitHub owner must be/)).toBeNull();
   });
 
   it("typing owner -bad then blurring shows the owner error", () => {
-    render(<TrustStep />);
+    renderStep();
     pick("GitHub Actions");
     type("GitHub owner", "-bad");
     fireEvent.blur(screen.getByLabelText("GitHub owner"));
@@ -75,7 +78,7 @@ describe("TrustStep", () => {
   });
 
   it("shows a pristine field's error after a jump-to focus, and only that field's", () => {
-    render(<TrustStep />);
+    renderStep();
     pick("GitHub Actions");
     expect(screen.queryByText(/GitHub repository must be/)).toBeNull();
     act(() => store().focus("field:trust.repo"));
@@ -85,7 +88,7 @@ describe("TrustStep", () => {
   });
 
   it("shows pristine field errors once errors are revealed", () => {
-    render(<TrustStep />);
+    renderStep();
     pick("GitHub Actions");
     expect(screen.queryByText(/GitHub repository must be/)).toBeNull();
     act(() => store().revealAllErrors());
@@ -94,7 +97,7 @@ describe("TrustStep", () => {
   });
 
   it("the GitHub AWS account ID writes the model and shows the needs-account error", () => {
-    render(<TrustStep />);
+    renderStep();
     pick("GitHub Actions");
     expect(screen.getByText("Needed for the GitHub OIDC provider ARN.")).toBeInTheDocument();
     act(() => store().focus("field:accountId"));
@@ -108,7 +111,7 @@ describe("TrustStep", () => {
   });
 
   it("the pull request ref hides the value input; other refs relabel it", () => {
-    render(<TrustStep />);
+    renderStep();
     pick("GitHub Actions");
     expect(screen.getByLabelText("Branch name")).toHaveValue("main");
     chooseRef("environment");
@@ -124,7 +127,7 @@ describe("TrustStep", () => {
   });
 
   it("re-selecting the current ref type keeps the typed value", () => {
-    render(<TrustStep />);
+    renderStep();
     pick("GitHub Actions");
     type("Branch name", "release");
     chooseRef("branch");
@@ -132,7 +135,7 @@ describe("TrustStep", () => {
   });
 
   it("keeps owner and repo when the ref type changes", () => {
-    render(<TrustStep />);
+    renderStep();
     pick("GitHub Actions");
     type("GitHub owner", "Aisu2635");
     type("Repository", "rolecraft");
@@ -141,7 +144,7 @@ describe("TrustStep", () => {
   });
 
   it("account trust writes id, optional external ID and MFA, omitting unset keys", () => {
-    render(<TrustStep />);
+    renderStep();
     pick("Another AWS account");
     expect(trust()).toEqual({ kind: "account", accountId: "" });
     type("Trusted account ID", "210987654321");
@@ -159,7 +162,7 @@ describe("TrustStep", () => {
   });
 
   it("validates the trusted account ID after blur", () => {
-    render(<TrustStep />);
+    renderStep();
     pick("Another AWS account");
     type("Trusted account ID", "12");
     expect(screen.queryByText(/Trusted account ID must be/)).toBeNull();
@@ -168,7 +171,7 @@ describe("TrustStep", () => {
   });
 
   it("validates the external ID and group or user name", () => {
-    render(<TrustStep />);
+    renderStep();
     pick("Another AWS account");
     type(/External ID/, "a b");
     fireEvent.blur(screen.getByLabelText(/External ID/));
@@ -180,7 +183,7 @@ describe("TrustStep", () => {
   });
 
   it("IAM group or user then User sets target user, and explains itself", () => {
-    render(<TrustStep />);
+    renderStep();
     pick("IAM group or user");
     expect(trust()).toEqual({ kind: "principal", target: "group", name: "" });
     expect(
@@ -191,5 +194,28 @@ describe("TrustStep", () => {
     expect(trust()).toEqual({ kind: "principal", target: "user", name: "" });
     type("Name", "alice");
     expect(trust()).toEqual({ kind: "principal", target: "user", name: "alice" });
+  });
+});
+
+describe("TrustStep touched fields", () => {
+  it("records a left field in the store under its focus id, so the output panel can see it", () => {
+    renderStep();
+    pick("GitHub Actions");
+    expect(store().touched).toEqual({});
+    fireEvent.blur(screen.getByLabelText("GitHub owner"));
+    fireEvent.blur(screen.getByLabelText("AWS account ID"));
+    expect(store().touched).toEqual({ "field:trust.owner": true, "field:accountId": true });
+    act(() => store().focus("field:trust.repo"));
+    expect(store().touched["field:trust.repo"]).toBe(true);
+  });
+
+  it("forgets the trust fields when the trusted entity changes", () => {
+    renderStep();
+    pick("Another AWS account");
+    fireEvent.blur(screen.getByLabelText("Trusted account ID"));
+    expect(screen.getByText(/Trusted account ID must be/)).toBeInTheDocument();
+    pick("GitHub Actions");
+    pick("Another AWS account");
+    expect(screen.queryByText(/Trusted account ID must be/)).toBeNull();
   });
 });

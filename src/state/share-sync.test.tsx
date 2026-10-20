@@ -91,7 +91,9 @@ describe("useShareSync", () => {
     const { result } = renderHook(() => useShareSync());
     expect(store().model).toEqual(m);
     expect(store().step).toBe(1);
-    expect(store().revealErrors).toBe(true);
+    // Loading reveals the loaded values' errors, not every error: blank fields stay to-dos.
+    expect(store().revealErrors).toBe(false);
+    expect(store().touched["field:name"]).toBe(true);
     expect(result.current.invalidLink).toBe(false);
   });
   it("stays on the first step for a restored role without grants", () => {

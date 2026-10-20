@@ -1,7 +1,7 @@
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { LandingPage } from "./LandingPage";
+import { formatDataDate, LandingPage } from "./LandingPage";
 
 function renderLanding() {
   return render(
@@ -22,8 +22,13 @@ describe("LandingPage", () => {
     vi.stubGlobal("fetch", f);
     renderLanding();
     expect(screen.getByRole("heading", { level: 1 }).textContent).toContain("Least-privilege AWS roles");
-    expect(screen.getByRole("link", { name: "Browse templates" })).toHaveAttribute("href", "/templates");
-    expect(screen.getByRole("link", { name: "Start from scratch" })).toHaveAttribute("href", "/builder");
+    expect(screen.queryByRole("link", { name: "Browse templates" })).toBeNull();
+    const start = screen.getByRole("link", { name: "Start from scratch" });
+    expect(start).toHaveAttribute("href", "/builder");
+    expect(start).toHaveClass("primary");
+    expect(document.querySelectorAll('a[href="/templates"]')).toHaveLength(0);
+    expect(document.body.textContent).not.toMatch(/template/i);
+    expect(screen.getByText("Share a role as a link")).toBeInTheDocument();
     expect(screen.getByText("Not affiliated with Amazon Web Services")).toBeInTheDocument();
     expect(screen.getByText("450+ services")).toBeInTheDocument();
     await waitFor(() => expect(f).toHaveBeenCalled());
@@ -34,12 +39,32 @@ describe("LandingPage", () => {
       "fetch",
       vi.fn().mockResolvedValue({
         ok: true,
-        json: () => Promise.resolve({ generatedAt: "2026-10-16", services: [1, 2, 3] }),
+        json: () => Promise.resolve({ generatedAt: "2026-10-19", services: [1, 2, 3] }),
       }),
     );
     renderLanding();
     expect(await screen.findByText("3 services")).toBeInTheDocument();
-    expect(screen.getByText("AWS data updated 2026-10-16")).toBeInTheDocument();
+    expect(screen.getByText("AWS data updated 19 Oct 2026")).toBeInTheDocument();
+  });
+
+  it("formats the data date in UTC with three-letter months (Sep, not en-GB's Sept)", () => {
+    expect(formatDataDate("2026-09-19")).toBe("19 Sep 2026");
+    expect(formatDataDate("2026-10-19")).toBe("19 Oct 2026");
+    const months = Array.from({ length: 12 }, (_, i) => formatDataDate(`2026-${String(i + 1).padStart(2, "0")}-01`));
+    expect(months.map((m) => m.split(" ")[1])).toEqual(
+      ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
+    );
+    expect(formatDataDate("2026-01-01")).toBe("1 Jan 2026");
+    expect(formatDataDate("2026-13-01")).toBe("2026-13-01");
+  });
+
+  it("shows a generatedAt that is not a YYYY-MM-DD date as it is", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ generatedAt: "soon", services: [1] }) }),
+    );
+    renderLanding();
+    expect(await screen.findByText("AWS data updated soon")).toBeInTheDocument();
   });
 
   it("falls back when the response is not ok", async () => {

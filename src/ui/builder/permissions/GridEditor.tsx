@@ -6,20 +6,21 @@ import ExpandableSection from "@cloudscape-design/components/expandable-section"
 import Header from "@cloudscape-design/components/header";
 import Modal from "@cloudscape-design/components/modal";
 import SpaceBetween from "@cloudscape-design/components/space-between";
-import StatusIndicator from "@cloudscape-design/components/status-indicator";
 import Table, { type TableProps } from "@cloudscape-design/components/table";
 import { useState, type JSX } from "react";
 import { MODULES } from "../../../core/engine/modules/registry";
 import type { Grant } from "../../../core/model/model";
 import { ACCESS_LEVELS, type AccessLevel, type Issue, type SlimService } from "../../../core/types";
 import { useBuilderStore } from "../../../state/builder";
-import { useDerived } from "../../../state/derive";
+import { useDerivedOutput } from "../../../state/derive";
 import { moduleFor, newGrantFor } from "../../../state/model-ops";
-import { grantIssues, shownOnRow } from "../issues";
+import { grantIssues, shownOnRow, todoText } from "../issues";
+import { usePendingSplit } from "../output/IssuesList";
 import { ScopeEditor } from "../scope/ScopeEditor";
 import { ActionPicker } from "./ActionPicker";
 import { ServiceUnavailable, useServiceInfo } from "./ServiceStatus";
 import { scopeSummary } from "./summary";
+import { StatusText } from "../../common/StatusText";
 
 const ACTIONS_HINT = "Clear the individual actions to use access levels.";
 type Column = TableProps.ColumnDefinition<Grant>;
@@ -56,9 +57,36 @@ function PresetCell(props: { grant: Grant; preset: string; label: string }): JSX
       name={"preset-" + grant.id}
       aria-label={`${label}, ${scopeSummary(grant)}`}
       checked={grant.access.type === "preset" && grant.access.preset === preset}
-      disabled={!grant.module}
       onChange={() => updateGrant(grant.id, (g) => ({ ...g, access: { type: "preset", preset } }))}
     />
+  );
+}
+
+/**
+ * A generic grant (no module) on a service whose columns are module presets: the presets do not apply, so its access
+ * is shown read-only, with a way to edit it where it can be.
+ */
+function GenericAccessCell(props: { grant: Grant }): JSX.Element {
+  const { access, id } = props.grant;
+  const n = access.type === "actions" ? access.actions.length : 0;
+  const text =
+    access.type === "levels"
+      ? access.levels.join(", ")
+      : access.type === "actions"
+        ? `${n} individual ${n === 1 ? "action" : "actions"}`
+        : access.preset;
+  const edit = (): void => {
+    const s = useBuilderStore.getState();
+    s.setEditor("sentences");
+    s.focus("grant:" + id);
+  };
+  return (
+    <SpaceBetween size="xs" direction="horizontal" alignItems="center">
+      <span>{text}</span>
+      <Button variant="inline-link" onClick={edit}>
+        Edit in Sentences
+      </Button>
+    </SpaceBetween>
   );
 }
 
@@ -119,10 +147,12 @@ function columnsFor(svc: SlimService, name: string, onEdit: (id: string) => void
   };
   if (presets.length > 0) {
     const cols = presets.map(
-      (p): Column => ({
+      (p, i): Column => ({
         id: "preset-" + p.id,
         header: p.label,
-        cell: (g) => <PresetCell grant={g} preset={p.id} label={p.label} />,
+        // A generic grant's access shows once, in the first preset column; its other preset cells stay empty.
+        cell: (g) =>
+          g.module ? <PresetCell grant={g} preset={p.id} label={p.label} /> : i === 0 ? <GenericAccessCell grant={g} /> : null,
       }),
     );
     return [scope, ...cols, remove];
@@ -149,7 +179,9 @@ function ServiceContainer(props: {
   const { svc, name } = info;
   const addGrant = useBuilderStore((s) => s.addGrant);
   const removeGrant = useBuilderStore((s) => s.removeGrant);
-  const shown = grants.flatMap((g) => grantIssues(issues, g.id)).filter(shownOnRow);
+  const model = useBuilderStore((s) => s.model);
+  // Errors on a grant the user has not touched yet are to-dos, as in the output panel.
+  const { pending, shown } = usePendingSplit(grants.flatMap((g) => grantIssues(issues, g.id)).filter(shownOnRow));
   return (
     <section aria-label={name}>
       <Container
@@ -174,10 +206,15 @@ function ServiceContainer(props: {
               wrapLines
               columnDefinitions={columnsFor(svc, name, props.onEdit)}
             />
+            {pending.map((i, n) => (
+              <StatusText key={"p" + n} type="pending">
+                {todoText(i, model)}
+              </StatusText>
+            ))}
             {shown.map((i, n) => (
-              <StatusIndicator key={n} type={i.severity}>
+              <StatusText key={n} type={i.severity}>
                 {i.message}
-              </StatusIndicator>
+              </StatusText>
             ))}
           </SpaceBetween>
         ) : (
@@ -228,7 +265,7 @@ function EditScopeModal(props: { grantId: string; issues: Issue[]; onClose(): vo
 /** One container per service, one table row per grant. Edits the same model as the sentence editor. */
 export function GridEditor(): JSX.Element {
   const grants = useBuilderStore((s) => s.model.grants);
-  const derived = useDerived();
+  const derived = useDerivedOutput();
   const issues = derived.kind === "ready" ? derived.input.result.issues : [];
   const [editing, setEditing] = useState<string | null>(null);
   const keys = [...new Set(grants.map((g) => g.service))];

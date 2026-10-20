@@ -4,11 +4,11 @@ import Header from "@cloudscape-design/components/header";
 import Input from "@cloudscape-design/components/input";
 import RadioGroup from "@cloudscape-design/components/radio-group";
 import SpaceBetween from "@cloudscape-design/components/space-between";
-import { useCallback, useState, type JSX, type ReactNode } from "react";
+import { useCallback, type JSX, type ReactNode } from "react";
 import { validateModelValues } from "../../../core/validate/values";
-import { useBuilderStore } from "../../../state/builder";
-import { useDerived } from "../../../state/derive";
-import { errorTextAt } from "../issues";
+import { isRevealed, useBuilderStore } from "../../../state/builder";
+import { useDerivedOutput } from "../../../state/derive";
+import { errorTextAt, onReviewField } from "../issues";
 import { IssuesList } from "../output/IssuesList";
 import { Summary } from "../output/Summary";
 import { StringList } from "../scope/shared";
@@ -23,17 +23,14 @@ function Field(props: {
   error?: string | undefined;
   children(touch: () => void): ReactNode;
 }): JSX.Element {
-  const [touched, setTouched] = useState(false);
-  const revealAll = useBuilderStore((s) => s.revealErrors);
-  const touch = useCallback(() => setTouched(true), []);
-  const ref = useFocusTarget<HTMLDivElement>("field:" + props.path, touch);
+  const id = "field:" + props.path;
+  const touchId = useBuilderStore((s) => s.touch);
+  const revealed = useBuilderStore((s) => isRevealed(s, id));
+  const touch = useCallback(() => touchId(id), [touchId, id]);
+  const ref = useFocusTarget<HTMLDivElement>(id, touch);
   return (
     <div ref={ref} onBlur={touch}>
-      <FormField
-        label={props.label}
-        description={props.description}
-        errorText={touched || revealAll ? props.error : undefined}
-      >
+      <FormField label={props.label} description={props.description} errorText={revealed ? props.error : undefined}>
         {props.children(touch)}
       </FormField>
     </div>
@@ -49,7 +46,7 @@ const MODES = [
 export function ReviewStep(): JSX.Element {
   const model = useBuilderStore((s) => s.model);
   const setFields = useBuilderStore((s) => s.setFields);
-  const derived = useDerived();
+  const derived = useDerivedOutput();
   const issues = derived.kind === "ready" ? derived.input.result.issues : validateModelValues(model);
   const err = (path: string): string | undefined => errorTextAt(issues, path);
   const nameDescription =
@@ -124,7 +121,11 @@ export function ReviewStep(): JSX.Element {
       </Field>
       <SpaceBetween size="xs">
         <Header variant="h3">Issues</Header>
-        <IssuesList issues={issues} />
+        {/* Errors on the fields above show there and in the output panel; listing them a third time is noise. */}
+        <IssuesList
+          issues={issues.filter((i) => !onReviewField(i))}
+          emptyText={issues.some(onReviewField) ? "No other issues." : undefined}
+        />
       </SpaceBetween>
       {derived.kind === "ready" && (
         <SpaceBetween size="xs">

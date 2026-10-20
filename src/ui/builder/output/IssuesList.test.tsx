@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Issue } from "../../../core/types";
 import { useBuilderStore } from "../../../state/builder";
@@ -67,5 +67,47 @@ describe("IssuesList onJump", () => {
     await waitFor(() => expect(useBuilderStore.getState().step).toBe(1));
     unsub();
     expect(order[0]).toBe("jump");
+  });
+});
+
+describe("IssuesList to-dos", () => {
+  const s3Grant = (bucket: string) => ({
+    id: "g1",
+    service: "s3",
+    module: "s3",
+    scope: { type: "module" as const, data: { bucket, prefixes: [""] } },
+    access: { type: "preset" as const, preset: "list-read" },
+  });
+  const bucketError: Issue = { id: "E_MODULE_DATA", severity: "error", message: "Bucket is bad", grantId: "g1", path: "data.bucket" };
+  const note: Issue = { id: "I1", severity: "info", message: "Just so you know" };
+
+  it("lists errors on untouched fields under To do, as pending, with an instruction and Jump to", () => {
+    useBuilderStore.getState().addGrant(s3Grant(""));
+    const { container } = render(<IssuesList issues={[bucketError, note]} />);
+    expect(screen.getByText("To do")).toBeInTheDocument();
+    expect(container.querySelector("[class*=awsui_status-error]")).toBeNull();
+    expect(container.querySelector("[class*=awsui_status-pending]")).toHaveTextContent("Enter the bucket name");
+    fireEvent.click(screen.getByRole("button", { name: "Jump to: Enter the bucket name" }));
+    expect(useBuilderStore.getState().focusTarget).toBe("grant:g1");
+    expect(screen.queryByText("To do")).toBeNull();
+    expect(container.querySelector("[class*=awsui_status-error]")).toHaveTextContent("Bucket is bad");
+  });
+
+  it("shows the error once its field is touched, and keeps the core message for a typed value", () => {
+    useBuilderStore.getState().addGrant(s3Grant("Bad_Bucket"));
+    const { container } = render(<IssuesList issues={[bucketError]} />);
+    expect(container.querySelector("[class*=awsui_status-pending]")).toHaveTextContent("Bucket is bad");
+    act(() => useBuilderStore.getState().touch("grant:g1"));
+    expect(screen.queryByText("To do")).toBeNull();
+    expect(container.querySelector("[class*=awsui_status-error]")).toHaveTextContent("Bucket is bad");
+  });
+});
+
+describe("IssuesList To do label", () => {
+  it("is a label, not a heading, so it never skips a heading level in the panel or the Review step", () => {
+    useBuilderStore.getState().setTrust({ kind: "account", accountId: "" });
+    render(<IssuesList issues={[{ id: "V_ACCOUNT_ID", severity: "error", message: "m", path: "trust.accountId" }]} />);
+    expect(screen.getByText("To do")).toBeInTheDocument();
+    expect(screen.queryByRole("heading")).toBeNull();
   });
 });

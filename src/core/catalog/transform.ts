@@ -15,8 +15,16 @@ interface AccessProps {
   IsTaggingOnly: boolean;
 }
 
-export function mapAccessLevel(props: AccessProps | undefined): AccessLevel {
-  if (!props) return "Read";
+const ACCESS_FLAGS = ["IsList", "IsWrite", "IsPermissionManagement", "IsTaggingOnly"] as const;
+
+/** The four flags when all are booleans; undefined (unclassifiable) when Annotations, Properties or any flag is missing. */
+function accessProps(annotations: { Properties?: Record<string, unknown> } | undefined): AccessProps | undefined {
+  const p = annotations?.Properties;
+  if (!p || !ACCESS_FLAGS.every((k) => typeof p[k] === "boolean")) return undefined;
+  return p as unknown as AccessProps;
+}
+
+export function mapAccessLevel(props: AccessProps): AccessLevel {
   if (props.IsPermissionManagement) return "Permissions management";
   if (props.IsTaggingOnly) return "Tagging";
   if (props.IsWrite) return "Write";
@@ -38,24 +46,17 @@ export function humanizeActionName(name: string): string {
     .join(" ");
 }
 
+// Upstream variance must not abort the weekly sync, so the access flags parse loosely here; accessProps() then
+// fails closed: an action missing any flag is dropped (never defaulted to Read). A missing ARNFormats is just [].
 const RawAction = z.object({
   Name: z.string(),
   ActionConditionKeys: z.array(z.string()).optional(),
-  Annotations: z
-    .object({
-      Properties: z.object({
-        IsList: z.boolean(),
-        IsPermissionManagement: z.boolean(),
-        IsTaggingOnly: z.boolean(),
-        IsWrite: z.boolean(),
-      }),
-    })
-    .optional(),
+  Annotations: z.object({ Properties: z.record(z.string(), z.unknown()).optional() }).optional(),
   Resources: z.array(z.object({ Name: z.string() })).optional(),
 });
 const RawResource = z.object({
   Name: z.string(),
-  ARNFormats: z.array(z.string()),
+  ARNFormats: z.array(z.string()).default([]),
   ConditionKeys: z.array(z.string()).optional(),
 });
 const RawService = z.object({
@@ -77,7 +78,17 @@ function titleCase(key: string): string {
     .join(" ");
 }
 
+/** The slim service plus the (sorted) names of actions dropped because their access level is unknown. */
+export interface TransformResult {
+  service: SlimService;
+  dropped: string[];
+}
+
 export function toSlimService(raw: unknown): SlimService {
+  return transformService(raw).service;
+}
+
+export function transformService(raw: unknown): TransformResult {
   const parsed = RawService.safeParse(raw);
   if (!parsed.success) {
     throw new Error(
@@ -86,13 +97,23 @@ export function toSlimService(raw: unknown): SlimService {
   }
   const svc = parsed.data;
   const curated = CURATED[svc.Name];
-  const actions: SlimAction[] = svc.Actions.map((a) => ({
-    name: a.Name,
-    level: mapAccessLevel(a.Annotations?.Properties),
-    resources: sortedUnique((a.Resources ?? []).map((r) => r.Name)),
-    label: humanizeActionName(a.Name),
-    conditionKeys: sortedUnique(a.ActionConditionKeys ?? []),
-  })).sort(byName);
+  const dropped: string[] = [];
+  const actions: SlimAction[] = [];
+  for (const a of svc.Actions) {
+    const props = accessProps(a.Annotations);
+    if (!props) {
+      dropped.push(a.Name);
+      continue;
+    }
+    actions.push({
+      name: a.Name,
+      level: mapAccessLevel(props),
+      resources: sortedUnique((a.Resources ?? []).map((r) => r.Name)),
+      label: humanizeActionName(a.Name),
+      conditionKeys: sortedUnique(a.ActionConditionKeys ?? []),
+    });
+  }
+  actions.sort(byName);
   const resources: SlimResource[] = (svc.Resources ?? [])
     .map((r) => ({
       name: r.Name,
@@ -100,7 +121,7 @@ export function toSlimService(raw: unknown): SlimService {
       conditionKeys: sortedUnique(r.ConditionKeys ?? []),
     }))
     .sort(byName);
-  return {
+  const service: SlimService = {
     key: svc.Name,
     name: curated?.name ?? titleCase(svc.Name),
     category: curated?.category ?? "Other",
@@ -108,6 +129,7 @@ export function toSlimService(raw: unknown): SlimService {
     resources,
     conditionKeys: sortedUnique((svc.ConditionKeys ?? []).map((c) => c.Name)),
   };
+  return { service, dropped: dropped.sort() };
 }
 
 export function buildIndex(

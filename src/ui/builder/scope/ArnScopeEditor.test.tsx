@@ -71,6 +71,24 @@ describe("ArnScopeEditor", () => {
     expect(seen.at(-1)).toEqual({ type: "arns", arns: ["arn:aws:thing:eu-west-1:123456789012:widget/w1"] });
   });
 
+  it("without an account ID, an Account field explains the * and where to add the ID", () => {
+    setup({ type: "arns", arns: [] });
+    chooseType("widget:0");
+    expect(screen.getByLabelText("Account")).toHaveValue("*");
+    expect(screen.getByLabelText("Account")).toHaveAttribute("readonly");
+    // The hint sits under the field and is read with it.
+    expect(screen.getByLabelText("Account")).toHaveAccessibleDescription(
+      "No account ID yet, so the account is *. Add it on the Review step, then rebuild the ARN.",
+    );
+  });
+
+  it("a format without an account has no Account field", () => {
+    setup({ type: "arns", arns: [] });
+    chooseType("pair:1");
+    expect(screen.queryByLabelText("Account")).toBeNull();
+    expect(screen.queryByText(/No account ID yet/)).toBeNull();
+  });
+
   it("does not add the same ARN twice", () => {
     const seen = setup({ type: "arns", arns: ["arn:aws:thing:*:*:widget/w1"] });
     chooseType("widget:0");

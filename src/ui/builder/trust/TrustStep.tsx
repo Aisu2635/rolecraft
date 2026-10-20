@@ -6,10 +6,10 @@ import Select from "@cloudscape-design/components/select";
 import SegmentedControl from "@cloudscape-design/components/segmented-control";
 import SpaceBetween from "@cloudscape-design/components/space-between";
 import Tiles from "@cloudscape-design/components/tiles";
-import { useCallback, useState, type JSX, type ReactNode } from "react";
+import { useCallback, type JSX, type ReactNode } from "react";
 import type { Trust } from "../../../core/model/model";
-import { useBuilderStore } from "../../../state/builder";
-import { useDerived } from "../../../state/derive";
+import { isRevealed, useBuilderStore } from "../../../state/builder";
+import { useDerivedOutput } from "../../../state/derive";
 import { defaultTrust } from "../../../state/model-ops";
 import { errorTextAt } from "../issues";
 import { useFocusTarget } from "../useFocusTarget";
@@ -74,17 +74,14 @@ function Field(props: {
   error?: string | undefined;
   children: ReactNode;
 }): JSX.Element {
-  const [touched, setTouched] = useState(false);
-  const revealAll = useBuilderStore((s) => s.revealErrors);
-  const reveal = useCallback(() => setTouched(true), []);
-  const ref = useFocusTarget<HTMLDivElement>("field:" + props.path, reveal);
+  const id = "field:" + props.path;
+  const touch = useBuilderStore((s) => s.touch);
+  const revealed = useBuilderStore((s) => isRevealed(s, id));
+  const reveal = useCallback(() => touch(id), [touch, id]);
+  const ref = useFocusTarget<HTMLDivElement>(id, reveal);
   return (
     <div ref={ref} onBlur={reveal}>
-      <FormField
-        label={props.label}
-        description={props.description}
-        errorText={touched || revealAll ? props.error : undefined}
-      >
+      <FormField label={props.label} description={props.description} errorText={revealed ? props.error : undefined}>
         {props.children}
       </FormField>
     </div>
@@ -203,7 +200,7 @@ function PrincipalFields(props: { trust: Principal; error(path: string): string 
 export function TrustStep(): JSX.Element {
   const trust = useBuilderStore((s) => s.model.trust);
   const setTrust = useBuilderStore((s) => s.setTrust);
-  const derived = useDerived();
+  const derived = useDerivedOutput();
   const issues = derived.kind === "ready" ? derived.input.result.issues : [];
   // The trust builder reports some problems without a path; match those by id.
   const error = (path: string, id?: string): string | undefined =>

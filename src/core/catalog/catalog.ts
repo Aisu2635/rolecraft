@@ -1,4 +1,5 @@
 import type { ServiceIndex, ServiceIndexEntry, SlimService } from "../types";
+import { CURATED } from "./curated";
 
 export interface Catalog {
   getService(key: string): SlimService | undefined;
@@ -13,13 +14,14 @@ export function createCatalog(services: SlimService[]): Catalog {
   };
 }
 
+// Aliases (the full AWS names, e.g. "Simple Storage Service") are matched exactly like the display name.
 function rank(entry: ServiceIndexEntry, q: string): number {
   const key = entry.key.toLowerCase();
-  const name = entry.name.toLowerCase();
+  const names = [entry.name, ...(CURATED[entry.key]?.aliases ?? [])].map((n) => n.toLowerCase());
   if (key === q) return 0;
   if (key.startsWith(q)) return 1;
-  if (name.split(/[^a-z0-9]+/).some((w) => w.startsWith(q))) return 2;
-  if (key.includes(q) || name.includes(q)) return 3;
+  if (names.some((name) => name.split(/[^a-z0-9]+/).some((w) => w.startsWith(q)))) return 2;
+  if (key.includes(q) || names.some((name) => name.includes(q))) return 3;
   return -1;
 }
 

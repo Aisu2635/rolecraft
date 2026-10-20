@@ -99,3 +99,25 @@ describe("ExportButton", () => {
     await waitFor(() => expect(document.querySelector("[class*=awsui_hidden]")).not.toBeNull());
   });
 });
+
+describe("ExportModal blocked by to-dos", () => {
+  it("reveals every error, so the to-dos are listed as errors", async () => {
+    const bad = build({
+      name: "x",
+      trust: { kind: "github", owner: "", repo: "r", ref: { type: "branch", value: "main" } },
+      grants: [moduleGrant("g1", "s3", "list-read", { bucket: "b", prefixes: [""] })],
+    });
+    expect(useBuilderStore.getState().revealErrors).toBe(false);
+    render(<ExportModal visible onDismiss={() => {}} input={bad} />);
+    expect(await screen.findByText("Export is blocked")).toBeInTheDocument();
+    expect(useBuilderStore.getState().revealErrors).toBe(true);
+    expect(screen.queryByText("To do")).toBeNull();
+    expect(screen.getAllByRole("button", { name: /^Jump to/ }).length).toBeGreaterThan(0);
+  });
+
+  it("reveals nothing when export is not blocked", async () => {
+    render(<ExportModal visible onDismiss={() => {}} input={input} />);
+    await screen.findByRole("button", { name: "Download ZIP" });
+    expect(useBuilderStore.getState().revealErrors).toBe(false);
+  });
+});

@@ -9,6 +9,7 @@ import { useFocusTarget } from "./useFocusTarget";
 
 // Vitest serves CSS imports empty, so the stylesheet is read from disk.
 const css = readFileSync(resolve(process.cwd(), "src/ui/global.css"), "utf8");
+const tokens = readFileSync(resolve(process.cwd(), "src/ui/tokens.ts"), "utf8");
 
 beforeEach(() => useBuilderStore.getState().reset());
 afterEach(cleanup);
@@ -123,6 +124,19 @@ describe("BuilderWorkspace step focus", () => {
     expect(screen.getByRole("heading", { level: 2, name: "Permissions" })).toHaveFocus();
     fireEvent.click(screen.getByRole("button", { name: /Review and export/ }));
     expect(screen.getByRole("heading", { level: 2, name: "Review and export" })).toHaveFocus();
+  });
+
+  it("the focused step heading is visible and draws a focus ring from the Cloudscape focus token", () => {
+    ui();
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    const heading = screen.getByRole("heading", { level: 2, name: "Permissions" });
+    expect(heading).toHaveFocus();
+    expect(heading).not.toHaveClass("rc-visually-hidden");
+    expect(heading).toHaveClass("rc-step-title");
+    const start = css.indexOf(".rc-step-title:focus-visible {");
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(css.slice(start, css.indexOf("}", start))).toMatch(/outline: 2px solid var\(--rc-focus\)/);
+    expect(tokens).toMatch(/"--rc-focus": colorBorderItemFocused/);
   });
 
   it("leaves focus to a pending focus target", () => {

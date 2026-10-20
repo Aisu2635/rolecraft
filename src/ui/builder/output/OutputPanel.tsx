@@ -10,10 +10,11 @@ import type { ExportInput } from "../../../core/export/types";
 import { policyLimit } from "../../../core/validate/size";
 import { useBuilderStore } from "../../../state/builder";
 import { CatalogContext } from "../../../state/catalog";
-import { useDerived } from "../../../state/derive";
+import { useDerivedOutput } from "../../../state/derive";
 import { useCopy } from "../../common/clipboard";
 import { CodeView } from "./CodeView";
-import { IssuesList } from "./IssuesList";
+import { FINISH_TODOS } from "../issues";
+import { IssuesList, usePendingSplit } from "./IssuesList";
 import { SizeMeter } from "./SizeMeter";
 import { StatusLine } from "./StatusLine";
 
@@ -31,7 +32,7 @@ export interface OutputPanelProps {
 }
 
 export function OutputPanel(props: OutputPanelProps = {}): JSX.Element {
-  const derived = useDerived();
+  const derived = useDerivedOutput();
   const catalog = useContext(CatalogContext);
   const model = useBuilderStore((s) => s.model);
   const { copy, modal } = useCopy();
@@ -39,6 +40,7 @@ export function OutputPanel(props: OutputPanelProps = {}): JSX.Element {
   const issuesRef = useRef<HTMLDivElement | null>(null);
   const derivedInput = derived.kind === "ready" ? derived.input : null;
   const hookTabs = props.useExtraTabs?.(derivedInput, active) ?? [];
+  const { pending, shown } = usePendingSplit(derivedInput?.result.issues ?? []);
 
   if (derived.kind === "loading") {
     return (
@@ -66,7 +68,8 @@ export function OutputPanel(props: OutputPanelProps = {}): JSX.Element {
   if (current !== active) setActive(current);
   const copyText =
     current === "policy" ? policyText : current === "trust" ? trustText : (extra.find((t) => t.id === current)?.copyText ?? "");
-  const hasErrors = result.issues.some((i) => i.severity === "error");
+  // To-dos are errors too (Copy and Export stay blocked), but they do not raise the red banner.
+  const hasErrors = shown.some((i) => i.severity === "error");
   const trustEmpty =
     model.trust.kind === "principal"
       ? `No trust policy: the policy is attached directly to the IAM ${model.trust.target}.`
@@ -79,7 +82,9 @@ export function OutputPanel(props: OutputPanelProps = {}): JSX.Element {
       content: result.policy ? (
         <CodeView text={policyText} language="json" label="Policy JSON" />
       ) : (
-        <Box color="text-body-secondary">No permissions yet. Add a service to generate a policy.</Box>
+        <Box color="text-body-secondary">
+          {model.grants.length > 0 ? FINISH_TODOS : "No permissions yet. Add a service to generate a policy."}
+        </Box>
       ),
     },
     {
@@ -97,13 +102,16 @@ export function OutputPanel(props: OutputPanelProps = {}): JSX.Element {
   return (
     <SpaceBetween size="m">
       {hasErrors && <Alert type="error">This policy has errors. Fix them before you apply it.</Alert>}
+      {/* Holds the error banner's place, so the buttons below do not move under a click that reveals an error. */}
+      {!hasErrors && pending.length > 0 && <Alert type="info">Finish the to-do items before you apply this policy.</Alert>}
       <Tabs tabs={tabs} activeTabId={current} onChange={(e) => setActive(e.detail.activeTabId)} />
       <StatusLine
-        issues={result.issues}
+        issues={shown}
+        pending={pending.length}
         onActivate={() => issuesRef.current?.scrollIntoView?.({ block: "start", behavior: "smooth" })}
       />
       <SizeMeter size={result.sizes.policy} limit={policyLimit(model.policyMode, model.trust)} />
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+      <div data-tour="actions" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
         <Button iconName="copy" disabled={copyText === ""} onClick={() => void copy(copyText)}>
           Copy
         </Button>

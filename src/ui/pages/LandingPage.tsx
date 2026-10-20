@@ -1,6 +1,6 @@
 import {
   Key,
-  Layout,
+  LinkSimple,
   ListChecks,
   Monitor,
   ShieldCheck,
@@ -14,6 +14,16 @@ import { HeroDemo } from "../landing/HeroDemo";
 interface IndexInfo {
   generatedAt?: string;
   services?: unknown[];
+}
+
+// A fixed table, not Intl: en-GB's short month for September is "Sept".
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** "2026-10-19" -> "19 Oct 2026". generatedAt is a UTC calendar date, so it is read in UTC (no day shift). */
+export function formatDataDate(generatedAt: string): string {
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(generatedAt) ? new Date(`${generatedAt}T00:00:00Z`) : null;
+  if (!d || Number.isNaN(d.getTime())) return generatedAt;
+  return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
 }
 
 function useIndexInfo(): IndexInfo | null {
@@ -71,14 +81,14 @@ function DesktopNote() {
 
 const features = [
   {
-    icon: <Layout size={20} />,
-    title: "Start from a template",
-    body: "Common jobs — S3 folder access, GitHub deploys, EC2 operators — ready in a few clicks.",
-  },
-  {
     icon: <ListChecks size={20} />,
     title: "Choose access visually",
     body: "Write rules as sentences or tick boxes. Folders, tags and service quirks handled for you.",
+  },
+  {
+    icon: <LinkSimple size={20} />,
+    title: "Share a role as a link",
+    body: "Send the whole role as a URL for review. Nothing is uploaded.",
   },
   {
     icon: <Terminal size={20} />,
@@ -137,14 +147,10 @@ export function LandingPage() {
             <div className="lp-kick">IAM policy builder</div>
             <h1>Least-privilege AWS roles, without writing JSON.</h1>
             <p className="lp-sub">
-              Pick a template or describe access in plain sentences. Get the policy, the trust policy, and the AWS CLI or
-              Terraform to create it.
+              Describe the access you need in plain English, review it, and export a ready-to-run role.
             </p>
             <div className="lp-ctas">
-              <Link className="lp-btn primary" to="/templates">
-                Browse templates
-              </Link>
-              <Link className="lp-btn" to="/builder">
+              <Link className="lp-btn primary" to="/builder">
                 Start from scratch
               </Link>
             </div>
@@ -174,7 +180,7 @@ export function LandingPage() {
             Built by <a href="https://omhinge.cloud">Om Hinge</a>
           </span>
           <span className="sp" />
-          {info?.generatedAt && <span>AWS data updated {info.generatedAt}</span>}
+          {info?.generatedAt && <span>AWS data updated {formatDataDate(info.generatedAt)}</span>}
           <span>Not affiliated with Amazon Web Services</span>
         </div>
       </footer>

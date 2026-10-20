@@ -4,6 +4,7 @@ import { expect as baseExpect, test as base, type Download, type Locator, type P
 import { strFromU8, unzipSync } from "fflate";
 import { exportAll } from "../../src/core/export";
 import { REFERENCE_CASES } from "../../src/core/export/__fixtures__/cases";
+import { VARIANT_CASES } from "../../src/core/export/__fixtures__/variants";
 import { roleModelSchema, type RoleModel } from "../../src/core/model/model";
 
 /** Collects a page's console errors and uncaught exceptions into `errors`. */
@@ -17,8 +18,22 @@ function trackErrors(page: Page, errors: string[]): void {
 /**
  * Every spec imports `test` from here: a test fails if any page of its context logged a console error or threw,
  * including pages opened later with `context.newPage()`.
+ * The first-run tour is marked as seen, so it does not cover the builder; `test.use({ tourSeen: false })` opts out.
  */
-export const test = base.extend({
+export const test = base.extend<{ tourSeen: boolean }>({
+  tourSeen: [true, { option: true }],
+  context: async ({ context, tourSeen }, use) => {
+    // Pages opened with context.newPage() start on about:blank, where localStorage throws.
+    if (tourSeen)
+      await context.addInitScript(() => {
+        try {
+          localStorage.setItem("rolecraft.tour.v1", "seen");
+        } catch {
+          // not an app page
+        }
+      });
+    await use(context);
+  },
   page: async ({ page, context }, use) => {
     const errors: string[] = [];
     trackErrors(page, errors);
@@ -43,9 +58,11 @@ export async function readZip(download: Download): Promise<Record<string, string
   return Object.fromEntries(Object.entries(entries).map(([name, data]) => [name, strFromU8(data)]));
 }
 
-/** The files the core exports for a reference case: the golden the UI's ZIP must equal byte for byte. */
+/**
+ * The files the core exports for a reference (or variant) case: the golden the UI's ZIP must equal byte for byte.
+ */
 export function referenceFiles(name: string): Record<string, string> {
-  const make = REFERENCE_CASES[name];
+  const make = REFERENCE_CASES[name] ?? VARIANT_CASES[name];
   if (!make) throw new Error(`No reference case ${name}`);
   const outcome = exportAll(make());
   if (!outcome.ok) throw new Error(`Reference case ${name} does not export: ${outcome.reason}`);

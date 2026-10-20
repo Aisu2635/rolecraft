@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest";
 import { REFERENCE_CASES } from "./__fixtures__/cases";
 import { VARIANT_CASES } from "./__fixtures__/variants";
 import { exportCliPowerShell } from "./cli-ps";
+import { EKS_PROPAGATION_ERROR, EKS_RETRY_FAILED, EKS_RETRY_MESSAGE } from "./eks";
 import { stringifyPolicy } from "./json";
-import type { ExportInput } from "./types";
+import { TAG, type ExportInput } from "./types";
 
 const names = Object.keys(REFERENCE_CASES);
 const make = (n: string): ExportInput => (REFERENCE_CASES[n] as () => ExportInput)();
@@ -66,11 +67,13 @@ describe("exportCliPowerShell", () => {
           return;
         }
         expect(l).toContain(" --no-cli-pager");
-        // The EKS access entry retry loop breaks on success and throws after the last attempt.
-        const next = l.includes("eks create-access-entry")
-          ? /^\s*if \(\$LASTEXITCODE -eq 0\) \{ break \}$/
-          : /^\s*if \(\$LASTEXITCODE -ne 0\) \{ throw "aws failed: [\w -]+" \}$/;
-        expect(lines[i + 1]).toMatch(next);
+        // The EKS access entry attempt runs in a script block; the loop breaks on success right after it.
+        if (l.includes("eks create-access-entry")) {
+          expect(lines[i + 1]).toBe("  }");
+          expect(lines[i + 2]).toBe("  if ($LASTEXITCODE -eq 0) { break }");
+          return;
+        }
+        expect(lines[i + 1]).toMatch(/^\s*if \(\$LASTEXITCODE -ne 0\) \{ throw "aws failed: [\w -]+" \}$/);
       }
     });
     expect(calls).toBeGreaterThan(0);
@@ -109,6 +112,16 @@ describe("exportCliPowerShell", () => {
     expect(c).toContain("attach-group-policy");
     expect(c).not.toContain("create-role");
   });
+  // Terraform and CloudFormation give the managed policy this description; the scripts must match (apply-exports CI).
+  it("create-policy carries the same description as Terraform and CloudFormation", () => {
+    for (const n of ["ec2-ssm", "s3-group"]) {
+      const lines = exportCliPowerShell(make(n))
+        .content.split("\n")
+        .filter((l) => l.includes("aws iam create-policy "));
+      expect(lines).toHaveLength(1);
+      expect(lines[0]).toContain(` --description '${TAG}' `);
+    }
+  });
   it("managed ARNs are attached; inline mode uses put-role-policy", () => {
     expect(exportCliPowerShell(make("ec2-ssm")).content).toContain(
       "--policy-arn 'arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore'",
@@ -120,10 +133,40 @@ describe("exportCliPowerShell", () => {
   it("eks access entries; region only when set", () => {
     const input = make("eks-kubectl");
     const c = exportCliPowerShell(input).content;
-    expect(c).toContain("  aws eks create-access-entry '--cluster-name=prod' \"--principal-arn=$RoleArn\" --no-cli-pager | Out-Null\n");
+    expect(c).toContain(
+      "    aws eks create-access-entry '--cluster-name=prod' \"--principal-arn=$RoleArn\" --no-cli-pager 2>&1 | ForEach-Object { \"$_\" }\n",
+    );
     expect(c).toContain("AmazonEKSViewPolicy --access-scope type=cluster --no-cli-pager | Out-Null\n");
     const r = exportCliPowerShell({ ...input, model: { ...input.model, region: "eu-west-1" } }).content;
-    expect(r).toContain("'--cluster-name=prod' \"--principal-arn=$RoleArn\" --region 'eu-west-1' --no-cli-pager | Out-Null");
+    expect(r).toContain("'--cluster-name=prod' \"--principal-arn=$RoleArn\" --region 'eu-west-1' --no-cli-pager 2>&1 |");
+  });
+  it("eks retry: only the propagation error is retried, anything else fails at once", () => {
+    const c = exportCliPowerShell(make("eks-kubectl")).content;
+    const start = c.indexOf("for ($Attempt = 1;");
+    const loop = c.slice(start, c.indexOf("\n}\n", start) + 3);
+    expect(loop).toBe(
+      [
+        "for ($Attempt = 1; ; $Attempt++) {",
+        // Scoped to the script block: stderr text and a non-zero exit must not stop the script here.
+        "  $EksError = & {",
+        "    $ErrorActionPreference = 'Continue'",
+        "    $PSNativeCommandUseErrorActionPreference = $false",
+        "    aws eks create-access-entry '--cluster-name=prod' \"--principal-arn=$RoleArn\" --no-cli-pager 2>&1 | ForEach-Object { \"$_\" }",
+        "  }",
+        "  if ($LASTEXITCODE -eq 0) { break }",
+        "  # Retry only while EKS rejects the new principal; any other error (no such cluster, access denied) is final.",
+        `  if ("$EksError" -notmatch '${EKS_PROPAGATION_ERROR}') { throw "aws failed: create-access-entry. $EksError" }`,
+        '  Write-Warning "$EksError"',
+        `  if ($Attempt -ge 6) { throw "aws failed: create-access-entry. ${EKS_RETRY_FAILED}." }`,
+        `  Write-Output "${EKS_RETRY_MESSAGE} ($Attempt/6)."`,
+        "  Start-Sleep -Seconds 10",
+        "}",
+        "",
+      ].join("\n"),
+    );
+    // A permanent error throws before any retry message or sleep; the outer preferences are untouched after.
+    expect(loop.indexOf("-notmatch")).toBeLessThan(loop.indexOf("Start-Sleep"));
+    expect(c.match(/\$ErrorActionPreference = /g)).toHaveLength(2);
   });
   it("eks under group trust emits a comment, no aws eks calls", () => {
     const input = make("s3-group");
@@ -201,7 +244,9 @@ describe("exportCliPowerShell", () => {
     expect(c).toContain("authentication mode must be API or API_AND_CONFIG_MAP");
     for (const cmd of ["iam create-role", "iam create-instance-profile", "eks create-access-entry", "eks associate-access-policy"]) {
       const line = c.split("\n").find((l) => l.trimStart().startsWith(`aws ${cmd}`));
-      expect(line?.endsWith(" | Out-Null")).toBe(true);
+      // create-access-entry's output (stdout and stderr) is captured into $EksError, not printed.
+      const quiet = cmd === "eks create-access-entry" ? ' 2>&1 | ForEach-Object { "$_" }' : " | Out-Null";
+      expect(line?.endsWith(quiet)).toBe(true);
     }
   });
   it("eks for principal user looks up the user's ARN", () => {
@@ -220,7 +265,7 @@ describe("exportCliPowerShell", () => {
     expect(c).not.toContain("get-caller-identity");
     expect(c).not.toContain(":user/");
     expect(c).toContain(
-      `aws eks create-access-entry '--cluster-name=prod' "--principal-arn=$PrincipalArn" --region 'eu-west-1' --no-cli-pager | Out-Null`,
+      `aws eks create-access-entry '--cluster-name=prod' "--principal-arn=$PrincipalArn" --region 'eu-west-1' --no-cli-pager 2>&1 |`,
     );
     expect(c).toContain("associate-access-policy");
     expect(c).not.toContain("wait role-exists");

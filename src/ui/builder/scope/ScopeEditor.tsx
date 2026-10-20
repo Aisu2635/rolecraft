@@ -8,17 +8,23 @@ import { Ec2ScopeEditor } from "./Ec2ScopeEditor";
 import { FieldsScopeEditor } from "./FieldsScopeEditor";
 import { MODULE_FIELDS } from "./module-fields";
 import { S3ScopeEditor } from "./S3ScopeEditor";
+import { ScopeTouchId } from "./shared";
 
 const hasFields = (id: string | undefined): id is keyof typeof MODULE_FIELDS =>
   id !== undefined && Object.hasOwn(MODULE_FIELDS, id);
 
+type ScopeEditorProps = { grant: Grant; svc: SlimService; issues: Issue[]; onChange(scope: Scope): void };
+
 /** Picks the scope editor for a grant: a module's own form, or the generic ARN picker. */
-export function ScopeEditor(props: {
-  grant: Grant;
-  svc: SlimService;
-  issues: Issue[];
-  onChange(scope: Scope): void;
-}): JSX.Element {
+export function ScopeEditor(props: ScopeEditorProps): JSX.Element {
+  return (
+    <ScopeTouchId.Provider value={"grant:" + props.grant.id}>
+      <PickScopeEditor {...props} />
+    </ScopeTouchId.Provider>
+  );
+}
+
+function PickScopeEditor(props: ScopeEditorProps): JSX.Element {
   const { grant, svc, issues, onChange } = props;
   const accountId = useBuilderStore((s) => s.model.accountId);
   const region = useBuilderStore((s) => s.model.region);
